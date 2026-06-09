@@ -36,7 +36,7 @@ FARSight lets pilots ask questions about FAA regulations and receive answers gro
 
 ## Project Status
 
-Work is tracked on the [GitHub Projects board](https://github.com/users/imrichie/projects). Issues are organized into six milestones covering ingestion, retrieval, generation, frontend, and validation.
+Work is tracked on the [GitHub Projects board](https://github.com/users/imrichie/projects/4). Issues are organized into six milestones covering ingestion, retrieval, generation, frontend, and validation.
 
 ---
 
