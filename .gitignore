@@ -12,7 +12,7 @@ build/
 .eggs/
 
 # Virtual environments
-.venv/
+ragenv/
 venv/
 env/
 
