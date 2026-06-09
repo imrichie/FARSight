@@ -1,0 +1,17 @@
+# Frontend
+streamlit
+
+# Azure AI Search — indexing and retrieval
+azure-search-documents
+
+# Azure AI Inference SDK — model calls
+azure-ai-inference
+
+# Azure identity — credential management
+azure-identity
+
+# PDF parsing
+pymupdf
+
+# Environment variable loading
+python-dotenv
