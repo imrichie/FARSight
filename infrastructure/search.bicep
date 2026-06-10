@@ -1,6 +1,6 @@
 // Sets the name of the Azure AI Search service
 @description('Name of the Azure AI Search service')
-param searchServiceName string = 'srch-farsight-dev'
+param searchServiceName string = 'srch-farsight'
 
 // Defines the Azure region where the service will be deployed
 @description('Azure region for the search service')
