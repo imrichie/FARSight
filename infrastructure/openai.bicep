@@ -17,7 +17,7 @@ resource azureOpenAIResource 'Microsoft.CognitiveServices/accounts@2024-10-01' =
   name: openAIResourceName
   location: location
 
-  // Identifies this as an Azure OpenAI resource (not a general AI Services one)
+  // Identifies this as an Azure OpenAI resource (not a general AI Services one). 
   kind: 'OpenAI'
 
   // Establishes the pricing tier for this resource
