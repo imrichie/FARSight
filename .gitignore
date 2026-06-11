@@ -28,7 +28,7 @@ env/
 data/raw/*.pdf
 
 # Internal reference docs — not part of the deployable project
-docs/
+data/
 
 # Pytest / coverage
 .pytest_cache/
