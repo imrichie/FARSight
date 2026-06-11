@@ -67,6 +67,32 @@ def test_out_of_sequence_labels_are_not_split_points():
     assert boundary_labels == ["a", "b"]
 
 
+def test_oversized_aim_piece_splits_deeper_at_numbered_items():
+    item_padding = "z" * (SECTION_SPLIT_CHARACTER_THRESHOLD // 2)
+    section_text = (
+        f"a. Operational Use of GPS.\n"
+        f"1. First item. {item_padding}\n"
+        f"2. Second item. {item_padding}\n"
+        f"3. Third item. {item_padding}\n"
+        f"b. Short closing subparagraph."
+    )
+    fixture_document = ParsedRegulationDocument(
+        document_name="AIM",
+        part_number="AIM",
+        corpus_version="2023-04-20",
+        sections=[RegulationSection("1-1-17", "Global Positioning System (GPS)", section_text, 70)],
+    )
+    chunks, warnings = chunk_parsed_document(fixture_document)
+    assert warnings == []
+    chunk_ids = [chunk["id"] for chunk in chunks]
+    assert chunk_ids == ["aim_1-1-17_a_1", "aim_1-1-17_a_2", "aim_1-1-17_a_3", "aim_1-1-17_b"]
+    for chunk in chunks:
+        assert chunk["chunk_text"].startswith("AIM 1-1-17 Global Positioning System (GPS)\n")
+    # the lettered lead-in stays with the first numbered item
+    assert "a. Operational Use of GPS." in chunks[0]["chunk_text"]
+    assert chunks[3]["chunk_text"].endswith("b. Short closing subparagraph.")
+
+
 def test_long_section_without_paragraphs_stays_whole_with_warning():
     fixture_document = build_fixture_document(
         [

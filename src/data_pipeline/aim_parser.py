@@ -35,6 +35,10 @@ TOC_DOT_LEADER_PATTERN = re.compile(r"(\.\s){4,}")
 # Matches a line that begins a top-level AIM subparagraph, e.g. "a. ..."
 AIM_SUBPARAGRAPH_PATTERN = re.compile(r"^[a-z]\.\s")
 
+# Matches a line that begins a numbered sub-item, e.g. "1. ..." — the
+# required space after the period keeps decimals like "29.92" from matching
+AIM_NUMBERED_ITEM_PATTERN = re.compile(r"^\d{1,2}\.\s")
+
 # Block labels that start a labeled passage (notes, examples, references)
 AIM_BLOCK_LABEL_PATTERN = re.compile(r"^(NOTE|EXAMPLE|PHRASEOLOGY|REFERENCE)[−-]")
 
@@ -51,12 +55,17 @@ def assemble_aim_paragraph_text(body_lines: list[str]) -> str:
     """
     Assemble AIM body lines, one passage per output line.
 
-    Top-level subparagraphs ("a. ...") and labeled blocks (NOTE−,
-    EXAMPLE−, PHRASEOLOGY−, REFERENCE−) each start a new passage.
+    Top-level subparagraphs ("a. ..."), numbered sub-items ("1. ..."),
+    and labeled blocks (NOTE−, EXAMPLE−, PHRASEOLOGY−, REFERENCE−) each
+    start a new passage.
     """
     passages: list[list[str]] = [[]]
     for line in body_lines:
-        if AIM_SUBPARAGRAPH_PATTERN.match(line) or AIM_BLOCK_LABEL_PATTERN.match(line):
+        if (
+            AIM_SUBPARAGRAPH_PATTERN.match(line)
+            or AIM_NUMBERED_ITEM_PATTERN.match(line)
+            or AIM_BLOCK_LABEL_PATTERN.match(line)
+        ):
             passages.append([line])
         else:
             passages[-1].append(line)

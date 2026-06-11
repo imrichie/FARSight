@@ -19,6 +19,10 @@ SECTION_SPLIT_CHARACTER_THRESHOLD = 6000
 CFR_LETTERED_PARAGRAPH_PATTERN = re.compile(r"^\(([a-z]{1,2})\)\s", re.MULTILINE)
 AIM_LETTERED_PARAGRAPH_PATTERN = re.compile(r"^([a-z])\.\s", re.MULTILINE)
 
+# Matches an AIM numbered sub-item at the start of a line, e.g. "1. " —
+# the second, deeper split level for pieces still over the threshold
+AIM_NUMBERED_ITEM_PATTERN = re.compile(r"^(\d{1,2})\.\s", re.MULTILINE)
+
 
 def next_paragraph_letter(current_letter: str) -> str:
     """CFR paragraph letters run (a)–(z), then double up: (aa), (bb), ..."""
@@ -45,6 +49,36 @@ def find_sequential_paragraph_boundaries(
             boundaries.append((match.start(), expected_letter))
             expected_letter = next_paragraph_letter(expected_letter)
     return boundaries
+
+
+def find_sequential_numbered_boundaries(piece_text: str) -> list[tuple[int, str]]:
+    """
+    Find the offsets where AIM numbered sub-items begin, accepting only
+    items in strict 1, 2, 3... sequence — same false-positive guard as
+    the lettered split.
+    """
+    boundaries: list[tuple[int, str]] = []
+    expected_item_number = 1
+    for match in AIM_NUMBERED_ITEM_PATTERN.finditer(piece_text):
+        if int(match.group(1)) == expected_item_number:
+            boundaries.append((match.start(), str(expected_item_number)))
+            expected_item_number += 1
+    return boundaries
+
+
+def split_text_at_boundaries(text: str, boundaries: list[tuple[int, str]]) -> list[tuple[str, str]]:
+    """Split text at boundary offsets; text before the first boundary
+    stays with the first piece."""
+    pieces: list[tuple[str, str]] = []
+    for boundary_index, (start_offset, piece_label) in enumerate(boundaries):
+        piece_start = 0 if boundary_index == 0 else start_offset
+        piece_end = (
+            boundaries[boundary_index + 1][0]
+            if boundary_index + 1 < len(boundaries)
+            else len(text)
+        )
+        pieces.append((piece_label, text[piece_start:piece_end].strip()))
+    return pieces
 
 
 def sanitize_for_chunk_id(raw_text: str) -> str:
@@ -105,6 +139,10 @@ def chunk_parsed_document(parsed_document: ParsedRegulationDocument) -> tuple[li
             continue
 
         boundaries = find_sequential_paragraph_boundaries(section.section_text, paragraph_pattern)
+        if len(boundaries) < 2 and document_is_aim:
+            # Some AIM paragraphs have numbered items but no lettered
+            # subparagraphs — fall back to the numbered level directly
+            boundaries = find_sequential_numbered_boundaries(section.section_text)
         if len(boundaries) < 2:
             chunking_warnings.append(
                 f"{section.section_number} is {len(whole_section_text)} chars "
@@ -114,28 +152,54 @@ def chunk_parsed_document(parsed_document: ParsedRegulationDocument) -> tuple[li
             continue
 
         # Any introductory text before (a) stays with the first piece
-        for boundary_index, (start_offset, paragraph_label) in enumerate(boundaries):
-            piece_start = 0 if boundary_index == 0 else start_offset
-            piece_end = (
-                boundaries[boundary_index + 1][0]
-                if boundary_index + 1 < len(boundaries)
-                else len(section.section_text)
-            )
-            piece_text = section.section_text[piece_start:piece_end].strip()
+        for paragraph_label, piece_text in split_text_at_boundaries(
+            section.section_text, boundaries
+        ):
             piece_chunk_text = f"{section_header}\n{piece_text}"
-            if len(piece_chunk_text) > SECTION_SPLIT_CHARACTER_THRESHOLD:
+            if len(piece_chunk_text) <= SECTION_SPLIT_CHARACTER_THRESHOLD or not document_is_aim:
+                if len(piece_chunk_text) > SECTION_SPLIT_CHARACTER_THRESHOLD:
+                    chunking_warnings.append(
+                        f"{section.section_number}({paragraph_label}) is still "
+                        f"{len(piece_chunk_text)} chars after the lettered-paragraph "
+                        "split — no deeper split rule exists for CFR text"
+                    )
+                chunks.append(
+                    build_chunk(parsed_document, section, piece_chunk_text, paragraph_label)
+                )
+                continue
+
+            # AIM piece still over the threshold — split one level deeper
+            # at its numbered sub-items, parent header prepended to every
+            # sub-piece
+            numbered_boundaries = find_sequential_numbered_boundaries(piece_text)
+            if len(numbered_boundaries) < 2:
                 chunking_warnings.append(
-                    f"{section.section_number}({paragraph_label}) is still "
-                    f"{len(piece_chunk_text)} chars after the lettered-paragraph "
-                    "split — no deeper split rule exists"
+                    f"{section.section_number}({paragraph_label}) is "
+                    f"{len(piece_chunk_text)} chars with no numbered sub-items "
+                    "to split at — kept whole"
                 )
-            chunks.append(
-                build_chunk(
-                    parsed_document,
-                    section,
-                    piece_chunk_text,
-                    paragraph_label=paragraph_label,
+                chunks.append(
+                    build_chunk(parsed_document, section, piece_chunk_text, paragraph_label)
                 )
-            )
+                continue
+
+            for item_label, item_text in split_text_at_boundaries(
+                piece_text, numbered_boundaries
+            ):
+                item_chunk_text = f"{section_header}\n{item_text}"
+                if len(item_chunk_text) > SECTION_SPLIT_CHARACTER_THRESHOLD:
+                    chunking_warnings.append(
+                        f"{section.section_number}({paragraph_label})({item_label}) "
+                        f"is still {len(item_chunk_text)} chars after the numbered "
+                        "sub-item split — no deeper split rule exists"
+                    )
+                chunks.append(
+                    build_chunk(
+                        parsed_document,
+                        section,
+                        item_chunk_text,
+                        paragraph_label=f"{paragraph_label}_{item_label}",
+                    )
+                )
 
     return chunks, chunking_warnings
