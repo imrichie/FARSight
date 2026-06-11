@@ -12,7 +12,6 @@ build/
 .eggs/
 
 # Virtual environments
-.venv/
 venv/
 env/
 
@@ -27,6 +26,9 @@ env/
 
 # Source PDFs — large binary files, not tracked in git
 data/raw/*.pdf
+
+# Internal reference docs — not part of the deployable project
+docs/
 
 # Pytest / coverage
 .pytest_cache/
