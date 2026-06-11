@@ -15,3 +15,6 @@ pymupdf
 
 # Environment variable loading
 python-dotenv
+
+# Test runner
+pytest
