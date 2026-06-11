@@ -33,7 +33,7 @@ FARSight never asks to be trusted. Every answer shows the exact FAR/AIM section 
 - **Grounded citations.** Every answer cites the exact section (e.g., *14 CFR § 91.215*). The citation comes from the retrieved document's metadata — the model never writes a section number itself.
 - **An honest uncertainty state.** When retrieval confidence is too low, FARSight shows the "couldn't find a confident answer" state. It never guesses.
 - **A responsive web app**, built to the FARSight Design System coming out of Figma.
-- **An evaluation harness.** A ~50-question golden set with expected answers and citations, run automatically as a quality gate.
+- **Evaluation.** A ~50-question test query set with expected answers and citations, run automatically as a quality gate.
 
 ## What I'm not building (on purpose)
 
@@ -49,19 +49,19 @@ FARSight never asks to be trusted. Every answer shows the exact FAR/AIM section 
 
 ## How I'll know it works
 
-All of this gets measured against the golden question set, automatically, in CI.
+All of this gets measured against the test query set, automatically, in CI.
 
 | Metric | Target |
 |---|---|
 | **Citation accuracy** — the cited section actually contains the text behind the answer | ≥ 95% |
-| **Answer correctness** — judged against the golden reference answers | ≥ 90% |
+| **Answer correctness** — judged against the test query reference answers | ≥ 90% |
 | **Correct refusal** — out-of-corpus questions hit the uncertainty state, zero made-up citations | 100% |
 | **Retrieval hit rate** — the right source chunk shows up in the top results | ≥ 95% |
 | **Latency** — question to full answer, p95 | < 10 s |
 
 ## What could go wrong (and what I'm doing about it)
 
-- **The model makes up a citation.** It structurally can't — section numbers come from retrieval metadata, never from the model. The eval harness verifies this on every run.
+- **The model makes up a citation.** It structurally can't — section numbers come from retrieval metadata, never from the model. Evaluation verifies this on every run.
 - **Chunking breaks the legal structure.** A regulation separated from its exceptions changes meaning. We chunk along section boundaries — there's a dedicated decision note on this.
 - **The regulations change.** The corpus is versioned, and every answer shows its "current as of" date.
 - **People trust it too much.** The source excerpt is always right there to check, the study-aid disclaimer is persistent, and the system prefers saying "I'm not sure" over a shaky answer.

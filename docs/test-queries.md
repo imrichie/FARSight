@@ -1,10 +1,10 @@
-# FARSight — Golden Question Set
+# FARSight — Test Query Set
 
 **Version 0.1 (Draft — citations unverified) · June 2026 · Owner: Ricardo Flores**
 
-The golden question set is FARSight's definition of "it works." Every question pairs a realistic pilot query with the key facts a correct answer must contain and the exact FAR/AIM citation that grounds it. The evaluation harness runs this set automatically and scores citation accuracy, answer correctness, retrieval hit rate, and correct-refusal behavior (targets defined in the Product Brief, §6).
+The test query set is FARSight's definition of "it works." Every question pairs a realistic pilot query with the key facts a correct answer must contain and the exact FAR/AIM citation that grounds it. Evaluation runs this set automatically and scores citation accuracy, answer correctness, retrieval hit rate, and correct-refusal behavior (targets defined in the Product Brief, §6).
 
-> **⚠️ Verification gate:** Expected citations below are drafted from domain knowledge and are **unverified**. Before the harness goes live, every citation must be checked against the ingested source text (tracked as a GitHub issue). A golden set with a wrong citation poisons every metric downstream. Version becomes 1.0 only when all rows are verified.
+> **⚠️ Verification gate:** Expected citations below are drafted from domain knowledge and are **unverified**. Before evaluation goes live, every citation must be checked against the indexed source text (tracked as a GitHub issue). A test query set with a wrong citation poisons every metric downstream. Version becomes 1.0 only when all rows are verified.
 
 **Question types** — each row is tagged to ensure the set stresses retrieval in different ways:
 

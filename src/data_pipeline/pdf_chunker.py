@@ -1,6 +1,7 @@
 # pdf_chunker.py
-# Parses each source PDF into tagged, regulation-sized text chunks
-# ready for embedding and upload to Azure AI Search.
+# Parses each source PDF into regulation-sized text chunks, enriched
+# with section metadata, ready for embedding and persistence to
+# Azure AI Search.
 
 
 def chunk_pdf_into_regulation_segments(pdf_file_path: str, source_document: str, part_number: str) -> list[dict]:
@@ -20,6 +21,6 @@ def chunk_pdf_into_regulation_segments(pdf_file_path: str, source_document: str,
         part_number: Short identifier for the regulatory part.
 
     Returns:
-        A list of chunk dicts ready for embedding and upload.
+        A list of enriched chunk dicts ready for embedding and persistence.
     """
     raise NotImplementedError
