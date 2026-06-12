@@ -157,3 +157,34 @@ def generate_cited_answer(
             "corpus_version": chosen_chunk["corpus_version"],
         },
     }
+
+
+def print_cited_answer(cited_answer: dict) -> None:
+    """Readable terminal output for a grounded answer."""
+    print(f"\nANSWER\n  {cited_answer['plain_language_summary']}")
+    if not cited_answer["answer_was_found"]:
+        return
+    verbatim_mark = "✓ verbatim" if cited_answer["excerpt_is_verbatim"] else "⚠ NOT FOUND VERBATIM IN CHUNK"
+    print(f"\nREGULATION TEXT ({verbatim_mark})\n  “{cited_answer['verbatim_excerpt']}”")
+    citation = cited_answer["citation"]
+    print(
+        f"\nSOURCE\n  {citation['document']}, {citation['section_number']} — "
+        f"{citation['section_title']} (p. {citation['page_number']}, "
+        f"edition {citation['corpus_version']})"
+    )
+
+
+if __name__ == "__main__":
+    import sys
+
+    from src.regulation_retriever import retrieve_relevant_regulation_chunks
+
+    if len(sys.argv) < 2:
+        print('usage: python3 -m src.answer_generator "your question here"')
+        sys.exit(1)
+    question_from_terminal = sys.argv[1]
+    print(f'question: "{question_from_terminal}"')
+    print("retrieving...")
+    retrieved_chunks = retrieve_relevant_regulation_chunks(question_from_terminal)
+    print(f"retrieved {len(retrieved_chunks)} chunks — generating...")
+    print_cited_answer(generate_cited_answer(question_from_terminal, retrieved_chunks))
