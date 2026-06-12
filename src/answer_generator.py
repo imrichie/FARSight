@@ -10,7 +10,7 @@ import os
 import re
 
 from azure.ai.inference import ChatCompletionsClient
-from azure.ai.inference.models import SystemMessage, UserMessage
+from azure.ai.inference.models import AssistantMessage, SystemMessage, UserMessage
 from azure.core.credentials import AzureKeyCredential
 from dotenv import load_dotenv
 
@@ -117,49 +117,72 @@ def generate_cited_answer(
     if not retrieved_regulation_chunks:
         return build_fallback_answer()
 
-    chat_response = build_chat_client().complete(
-        messages=[
-            SystemMessage(content=GROUNDED_ANSWER_SYSTEM_PROMPT),
+    chat_client = build_chat_client()
+    conversation_messages = [
+        SystemMessage(content=GROUNDED_ANSWER_SYSTEM_PROMPT),
+        UserMessage(
+            content=(
+                f"Pilot's question: {user_question}\n\n"
+                f"Retrieved regulation chunks:\n\n"
+                f"{format_chunks_for_prompt(retrieved_regulation_chunks)}"
+            )
+        ),
+    ]
+
+    # An excerpt that fails verification is treated as a non-answer:
+    # one corrective retry, then the honest uncertainty state. An
+    # unverified quote is never shown to a user as regulation text.
+    for generation_attempt in range(2):
+        chat_response = chat_client.complete(messages=conversation_messages)
+        model_reply_text = chat_response.choices[0].message.content
+        model_reply = parse_model_json_response(model_reply_text)
+
+        chosen_chunk_number = model_reply.get("chosen_chunk_number")
+        chunk_number_is_valid = (
+            isinstance(chosen_chunk_number, int)
+            and 1 <= chosen_chunk_number <= len(retrieved_regulation_chunks)
+        )
+        if not model_reply.get("answer_found") or not chunk_number_is_valid:
+            return build_fallback_answer()
+
+        chosen_chunk = retrieved_regulation_chunks[chosen_chunk_number - 1]
+        verbatim_excerpt = model_reply.get("verbatim_excerpt", "").strip()
+
+        # Trust but verify: the excerpt must appear in the chunk as one
+        # contiguous span or the answer does not ship
+        excerpt_is_verbatim = normalize_for_quote_check(
+            verbatim_excerpt
+        ) in normalize_for_quote_check(chosen_chunk["chunk_text"])
+
+        if excerpt_is_verbatim:
+            return {
+                "answer_was_found": True,
+                "plain_language_summary": model_reply.get("plain_language_summary", "").strip(),
+                "verbatim_excerpt": verbatim_excerpt,
+                "excerpt_is_verbatim": True,
+                "citation": {
+                    "document": chosen_chunk["document"],
+                    "section_number": chosen_chunk["section_number"],
+                    "section_title": chosen_chunk["section_title"],
+                    "page_number": chosen_chunk["page_number"],
+                    "corpus_version": chosen_chunk["corpus_version"],
+                },
+            }
+
+        # Feed the failure back and let the model try once more
+        conversation_messages.append(AssistantMessage(content=model_reply_text))
+        conversation_messages.append(
             UserMessage(
                 content=(
-                    f"Pilot's question: {user_question}\n\n"
-                    f"Retrieved regulation chunks:\n\n"
-                    f"{format_chunks_for_prompt(retrieved_regulation_chunks)}"
+                    "Your verbatim_excerpt was not found in the chosen chunk as one "
+                    "contiguous span — it appears to be reassembled or edited. "
+                    "Respond again with the same JSON shape, quoting one single "
+                    "continuous passage from the chunk, copied exactly."
                 )
-            ),
-        ],
-    )
-    model_reply = parse_model_json_response(chat_response.choices[0].message.content)
+            )
+        )
 
-    chosen_chunk_number = model_reply.get("chosen_chunk_number")
-    chunk_number_is_valid = (
-        isinstance(chosen_chunk_number, int)
-        and 1 <= chosen_chunk_number <= len(retrieved_regulation_chunks)
-    )
-    if not model_reply.get("answer_found") or not chunk_number_is_valid:
-        return build_fallback_answer()
-
-    chosen_chunk = retrieved_regulation_chunks[chosen_chunk_number - 1]
-    verbatim_excerpt = model_reply.get("verbatim_excerpt", "").strip()
-
-    # Trust but verify: confirm the excerpt actually appears in the chunk
-    excerpt_is_verbatim = normalize_for_quote_check(verbatim_excerpt) in normalize_for_quote_check(
-        chosen_chunk["chunk_text"]
-    )
-
-    return {
-        "answer_was_found": True,
-        "plain_language_summary": model_reply.get("plain_language_summary", "").strip(),
-        "verbatim_excerpt": verbatim_excerpt,
-        "excerpt_is_verbatim": excerpt_is_verbatim,
-        "citation": {
-            "document": chosen_chunk["document"],
-            "section_number": chosen_chunk["section_number"],
-            "section_title": chosen_chunk["section_title"],
-            "page_number": chosen_chunk["page_number"],
-            "corpus_version": chosen_chunk["corpus_version"],
-        },
-    }
+    return build_fallback_answer()
 
 
 def print_cited_answer(cited_answer: dict) -> None:
