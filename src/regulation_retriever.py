@@ -66,3 +66,30 @@ def retrieve_relevant_regulation_chunks(
         retrieved_chunk["search_score"] = search_result["@search.score"]
         retrieved_regulation_chunks.append(retrieved_chunk)
     return retrieved_regulation_chunks
+
+
+def print_retrieved_chunks(user_question: str, retrieved_regulation_chunks: list[dict]) -> None:
+    """Readable terminal output for eyeballing retrieval quality."""
+    print(f'question: "{user_question}"\n')
+    if not retrieved_regulation_chunks:
+        print("no chunks retrieved")
+        return
+    for rank, chunk in enumerate(retrieved_regulation_chunks, start=1):
+        chunk_text_preview = " ".join(chunk["chunk_text"].split())[:200]
+        print(f"#{rank}  score {chunk['search_score']:.4f}  "
+              f"[{chunk['document']}] {chunk['section_number']} — {chunk['section_title']}")
+        print(f"    {chunk_text_preview}\n")
+
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) < 2:
+        print('usage: python3 -m src.regulation_retriever "your question here" [k]')
+        sys.exit(1)
+    question_from_terminal = sys.argv[1]
+    requested_chunk_count = int(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_CHUNKS_TO_RETRIEVE
+    print_retrieved_chunks(
+        question_from_terminal,
+        retrieve_relevant_regulation_chunks(question_from_terminal, requested_chunk_count),
+    )
