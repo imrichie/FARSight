@@ -7,6 +7,8 @@
 # Run from the repo root:  python -m src.data_pipeline.chunk_source_documents
 
 import json
+import sys
+from collections import Counter
 from pathlib import Path
 
 from src.data_pipeline.aim_parser import parse_aim_pdf
@@ -87,9 +89,21 @@ def main():
             parsed_document.out_of_scope_lines_dropped,
         )
 
+    # Duplicate ids would silently overwrite each other at upload time —
+    # fail loudly here instead, before anything is written
+    duplicate_chunk_ids = [
+        chunk_id for chunk_id, count in Counter(c["id"] for c in all_chunks).items() if count > 1
+    ]
+    if duplicate_chunk_ids:
+        print(f"\n✗ duplicate chunk ids found ({len(duplicate_chunk_ids)}):")
+        for duplicate_id in duplicate_chunk_ids:
+            print(f"  ✗ {duplicate_id}")
+        print("chunk file NOT written — fix the parser before persisting")
+        sys.exit(1)
+
     CHUNK_OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     CHUNK_OUTPUT_FILE.write_text(json.dumps(all_chunks, indent=2, ensure_ascii=False))
-    print(f"\nwrote {len(all_chunks)} chunks to {CHUNK_OUTPUT_FILE}")
+    print(f"\nwrote {len(all_chunks)} chunks to {CHUNK_OUTPUT_FILE} — all chunk ids unique")
 
 
 if __name__ == "__main__":

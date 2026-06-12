@@ -30,6 +30,10 @@ EMBEDDING_BATCH_MAX_CHUNKS = 32
 EMBEDDING_BATCH_MAX_CHARS = 24_000  # ≈ 6K tokens
 ESTIMATED_CHARS_PER_TOKEN = 4
 
+# A run that can't upload shouldn't keep paying to embed — stop after
+# this many upload failures in a row (e.g. a storage quota wall)
+CONSECUTIVE_UPLOAD_FAILURE_LIMIT = 3
+
 
 def build_embeddings_client() -> EmbeddingsClient:
     openai_endpoint = os.environ["AZURE_OPENAI_ENDPOINT"].rstrip("/")
@@ -123,6 +127,7 @@ def main():
     total_uploaded = 0
     total_tokens_embedded = 0
     run_failures: list[str] = []
+    consecutive_upload_failures = 0
 
     for batch_number, chunk_batch in enumerate(chunk_batches, start=1):
         try:
@@ -138,10 +143,20 @@ def main():
             uploaded_count, upload_failures = upload_chunk_batch(embedded_chunks, search_client)
             total_uploaded += uploaded_count
             run_failures.extend(upload_failures)
+            consecutive_upload_failures = 0
         except Exception as upload_error:
             failed_ids = ", ".join(chunk["id"] for chunk in chunk_batch)
             run_failures.append(f"upload batch {batch_number} ({failed_ids}): {upload_error}")
+            consecutive_upload_failures += 1
             print(f"batch {batch_number}/{len(chunk_batches)}  ✗ upload failed — continuing", flush=True)
+            if consecutive_upload_failures >= CONSECUTIVE_UPLOAD_FAILURE_LIMIT:
+                print(
+                    f"\n✗ {consecutive_upload_failures} upload failures in a row — "
+                    "aborting run instead of paying to embed chunks that can't be "
+                    "uploaded. Re-running after the cause is fixed is safe (upserts).",
+                    flush=True,
+                )
+                break
             continue
 
         chunks_completed += len(chunk_batch)
