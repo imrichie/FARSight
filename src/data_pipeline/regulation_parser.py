@@ -25,6 +25,12 @@ SECTION_HEADING_PATTERN = re.compile(r"^§\s*(\d+\.\d+[\w–-]*)\s*(.*)$")
 # Matches the edition date in the running header, e.g. "(1–1–24 Edition)"
 EDITION_DATE_PATTERN = re.compile(r"\((\d{1,2})[–-](\d{1,2})[–-](\d{2}) Edition\)")
 
+
+def section_number_sort_key(section_number: str) -> tuple[int, int]:
+    """Numeric key for a section number like "91.309" → (91, 309)."""
+    number_match = re.match(r"(\d+)\.(\d+)", section_number)
+    return (int(number_match.group(1)), int(number_match.group(2)))
+
 # Matches a line that begins a top-level lettered paragraph, e.g. "(a) ..."
 TOP_LEVEL_PARAGRAPH_PATTERN = re.compile(r"^\([a-z]{1,2}\)\s")
 
@@ -204,6 +210,30 @@ def parse_cfr_part_pdf(
 
         if is_heading_line:
             heading_match = SECTION_HEADING_PATTERN.match(line_text)
+
+            # Sections print in strictly increasing numeric order, so a
+            # "heading" whose number is not greater than the current
+            # section's is really a wrapped title fragment — e.g. the
+            # title of § 91.311 ("Towing: Other than under § 91.309.")
+            # breaks onto a second bold line that looks like a heading
+            heading_is_out_of_order = (
+                heading_match is not None
+                and current_section is not None
+                and heading_match.group(1).startswith(section_number_prefix)
+                and section_number_sort_key(heading_match.group(1))
+                <= section_number_sort_key(current_section.section_number)
+            )
+            if heading_is_out_of_order:
+                if reading_heading_continuation:
+                    current_section.section_title = normalize_whitespace(
+                        f"{current_section.section_title} {line_text}"
+                    )
+                else:
+                    parsed_document.skipped_headings.append(
+                        f"p.{page_number}: out-of-order heading kept out: {line_text}"
+                    )
+                continue
+
             if heading_match and heading_match.group(1).startswith(section_number_prefix):
                 finalize_current_section()
                 current_section = RegulationSection(
