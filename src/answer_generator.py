@@ -33,9 +33,12 @@ retrieved for it. Follow these rules exactly:
 3. Write a plain-language summary: one or two sentences in everyday English.
    The summary must stay strictly consistent with the quoted regulation text —
    simplify it, never add to it or contradict it.
-4. Copy a verbatim excerpt: the exact sentence or passage from the chunk that
-   answers the question, quoted word for word. Do not paraphrase, shorten
-   words, or fix typography inside the quote.
+4. Copy a verbatim excerpt: one single CONTIGUOUS, unedited span copied from
+   the chunk, quoted word for word. Never reassemble the quote from separate
+   clauses or skip over text in the middle — a spliced quote is not a quote.
+   If the full relevant text is too long, quote the single most relevant
+   continuous passage instead. Do not paraphrase, shorten words, or fix
+   typography inside the quote. Quote, don't compose.
 5. If the chunks do not actually contain the answer, say so — do not force
    an answer from loosely related text.
 
