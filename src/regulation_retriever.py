@@ -44,6 +44,9 @@ def retrieve_relevant_regulation_chunks(
     """
     load_dotenv()
 
+    if not user_question or not user_question.strip():
+        return []
+
     question_embedding = (
         build_embeddings_client().embed(input=[user_question]).data[0].embedding
     )
