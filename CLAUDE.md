@@ -10,7 +10,7 @@ itself is a deliverable — a hiring manager will read it.
 
 ## Stack
 
-- Python 3.13, plain Python — **no orchestration frameworks** (no LangChain,
+- Python 3.11, plain Python — **no orchestration frameworks** (no LangChain,
   no Semantic Kernel). Every step stays inspectable and explainable.
 - Azure: AI Search (`srch-farsight`, free tier, westus2) and Azure OpenAI
   (`oai-farsight`, S0, westus — westus2 has no OpenAI models; that's
@@ -26,7 +26,7 @@ itself is a deliverable — a hiring manager will read it.
 
 - **Milestone 1 (Foundation): done.** AI Search + Azure OpenAI provisioned via
   Bicep, both models deployed. #19 (CI auto-deploy) deferred until app deploy
-  + eval gate land together.
+  - eval gate land together.
 - **Milestone 2 (Data Pipeline): done.** All five PDFs parsed, chunked,
   enriched, embedded, and persisted — 1,754 chunks in the index. Validated.
 - **Milestone 3 (Query Path): done.** Hybrid retrieval + grounded answer
@@ -128,7 +128,7 @@ Don't reintroduce "ingestion", "harness", or "golden".
 - Descriptive naming, Apple style: files and functions read like sentences.
   No abbreviations.
 - Docs and comments in a human voice — plain, direct, like explaining to a
-  teammate. No enterprise jargon, no ceremony. Comments explain *why*, not
+  teammate. No enterprise jargon, no ceremony. Comments explain _why_, not
   what.
 - PRs close their issue with "Closes #N" and describe what changed in plain
   language, including anything that went wrong and how it was handled.
