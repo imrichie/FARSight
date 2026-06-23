@@ -105,6 +105,10 @@ def join_wrapped_lines(text_lines: list[str]) -> str:
     return joined_text
 
 
+def append_wrapped_heading_line(existing_heading: str, next_line: str) -> str:
+    return join_wrapped_lines([existing_heading, next_line])
+
+
 def assemble_section_text(body_lines: list[str]) -> str:
     """
     Assemble body lines into section text, one paragraph per line.
@@ -225,8 +229,8 @@ def parse_cfr_part_pdf(
             )
             if heading_is_out_of_order:
                 if reading_heading_continuation:
-                    current_section.section_title = normalize_whitespace(
-                        f"{current_section.section_title} {line_text}"
+                    current_section.section_title = append_wrapped_heading_line(
+                        current_section.section_title, line_text
                     )
                 else:
                     parsed_document.skipped_headings.append(
@@ -246,8 +250,8 @@ def parse_cfr_part_pdf(
                 reading_heading_continuation = True
             elif reading_heading_continuation and current_section is not None and not heading_match:
                 # A long section title wrapped onto another bold line
-                current_section.section_title = normalize_whitespace(
-                    f"{current_section.section_title} {line_text}"
+                current_section.section_title = append_wrapped_heading_line(
+                    current_section.section_title, line_text
                 )
             else:
                 # A heading that isn't a section of this part (foreign part
