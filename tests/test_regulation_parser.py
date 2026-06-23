@@ -4,6 +4,7 @@
 
 from src.data_pipeline.regulation_parser import (
     SECTION_HEADING_PATTERN,
+    append_wrapped_heading_line,
     assemble_section_text,
     join_wrapped_lines,
 )
@@ -28,6 +29,11 @@ def test_hyphenated_word_wrap_is_repaired():
 def test_real_compound_hyphen_is_kept():
     joined_text = join_wrapped_lines(["Automatic Dependent Surveillance-", "Broadcast equipment"])
     assert joined_text == "Automatic Dependent Surveillance-Broadcast equipment"
+
+
+def test_wrapped_heading_line_repairs_title_hyphenation():
+    heading_text = append_wrapped_heading_line("Minimum safe altitudes: Gen-", "eral.")
+    assert heading_text == "Minimum safe altitudes: General."
 
 
 def test_lettered_paragraphs_start_new_lines():
