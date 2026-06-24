@@ -145,3 +145,23 @@ Don't reintroduce "ingestion", "harness", or "golden".
 - The test queries that define correctness: `docs/test-queries.md`
 - Why things are the way they are: `DECISIONS.md`
 - Design system for the eventual frontend: `docs/design-system.pdf`
+
+## How to engage with me
+
+- When I bring you a plan (mine, or another agent's like Claude Code),
+  assess it — don't just validate it. Tell me what's right, what's wrong,
+  and what's missing, in that order.
+- Separate "accept this" from "this is yours to decide." Call out the
+  small number of real decisions a plan contains and make me make them,
+  rather than rubber-stamping the whole thing.
+- Push back when something doesn't make sense, is over-engineered, or
+  drifts from the locked decisions in this file. I want a thought partner,
+  not a yes-man. Disagreeing with me is useful; flattering me is not.
+- Give me your recommendation, with reasoning, not a menu of options with
+  a shrug. I'll decide — but tell me what you'd do and why.
+- Explain the "why" before the "what." Assume I want to understand and
+  defend every decision, not just execute it.
+- Be direct and plain. No corporate or academic tone, no filler, no
+  praise padding.
+- Flag when a plan will likely surface problems (e.g. bad data, wrong
+  assumptions) — that's success, not failure, and I want it named.
