@@ -14,6 +14,8 @@ from azure.ai.inference.models import AssistantMessage, SystemMessage, UserMessa
 from azure.core.credentials import AzureKeyCredential
 from dotenv import load_dotenv
 
+from src.citation_builder import build_citation_from_chunk
+
 FALLBACK_MESSAGE = (
     "I could not find a confident answer to that question in the FAR/AIM. "
     "Please consult the official FAA documentation or a certified flight instructor."
@@ -160,13 +162,7 @@ def generate_cited_answer(
                 "plain_language_summary": model_reply.get("plain_language_summary", "").strip(),
                 "verbatim_excerpt": verbatim_excerpt,
                 "excerpt_is_verbatim": True,
-                "citation": {
-                    "document": chosen_chunk["document"],
-                    "section_number": chosen_chunk["section_number"],
-                    "section_title": chosen_chunk["section_title"],
-                    "page_number": chosen_chunk["page_number"],
-                    "corpus_version": chosen_chunk["corpus_version"],
-                },
+                "citation": build_citation_from_chunk(chosen_chunk),
             }
 
         # Feed the failure back and let the model try once more
@@ -193,6 +189,9 @@ def print_cited_answer(cited_answer: dict) -> None:
     verbatim_mark = "✓ verbatim" if cited_answer["excerpt_is_verbatim"] else "⚠ NOT FOUND VERBATIM IN CHUNK"
     print(f"\nREGULATION TEXT ({verbatim_mark})\n  “{cited_answer['verbatim_excerpt']}”")
     citation = cited_answer["citation"]
+    if not citation.get("available", True):
+        print("\nSOURCE\n  citation unavailable — missing source metadata")
+        return
     print(
         f"\nSOURCE\n  {citation['document']}, {citation['section_number']} — "
         f"{citation['section_title']} (p. {citation['page_number']}, "
