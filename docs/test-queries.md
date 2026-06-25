@@ -52,7 +52,7 @@ The test query set is FARSight's definition of "it works." Every question pairs 
 | ID | Question | Expected key facts | Expected citation | Type |
 |---|---|---|---|---|
 | G-17 | What documents do I need to carry to act as PIC? | Pilot certificate, government-issued photo ID, and appropriate medical certificate | 14 CFR § 61.3 | direct |
-| G-18 | What do I need to legally carry passengers? | 3 takeoffs and landings within preceding 90 days in same category/class (and type if required) | 14 CFR § 61.57(a) | paraphrase |
+| G-18 | Am I current to carry passengers during the day? | 3 takeoffs and landings within preceding 90 days in same category/class (and type if required) | 14 CFR § 61.57(a) | paraphrase |
 | G-19 | Am I current to fly passengers at night? | 3 takeoffs and 3 landings to a full stop within preceding 90 days, during the period 1 hr after sunset to 1 hr before sunrise | 14 CFR § 61.57(b) | direct |
 | G-20 | How often do I need a flight review? | Within preceding 24 calendar months | 14 CFR § 61.56 | direct |
 | G-21 | How long is my third-class medical valid? | Under age 40 at exam: 60 calendar months; 40 or older: 24 calendar months | 14 CFR § 61.23(d) | trap (suggests Part 67) |
