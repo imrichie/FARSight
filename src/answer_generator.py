@@ -15,6 +15,7 @@ from azure.core.credentials import AzureKeyCredential
 from dotenv import load_dotenv
 
 from src.citation_builder import build_citation_from_chunk
+from src.product_scope import FARSIGHT_V1_SUPPORTED_SCOPE
 
 FALLBACK_MESSAGE = (
     "I could not find a confident answer to that question in the FAR/AIM. "
@@ -53,6 +54,39 @@ Respond with JSON only, no other text, in exactly this shape:
 }
 """
 
+ANSWERABILITY_GATE_SYSTEM_PROMPT = f"""\
+You are the answerability gate for FARSight.
+
+Your job is to decide whether a generated answer should be shown to the user.
+This is a final safety check after the model has selected one source chunk and
+quoted a verified excerpt from it.
+
+Supported product scope:
+{FARSIGHT_V1_SUPPORTED_SCOPE}
+
+Rules:
+1. Mark answerable true only when the selected source chunk directly addresses
+   the specific subject and regulatory context of the question.
+2. Reject answers whose selected source chunk is merely topically nearby,
+   shares keywords, or answers a narrower/different regulatory subject than
+   the question asks.
+3. Reject questions whose authoritative answer belongs outside the supported
+   product scope, even when the AIM contains adjacent advisory text.
+4. Do not reject valid in-scope questions merely because they share vocabulary
+   with out-of-scope topics. For example, questions about carrying an aircraft
+   registration certificate on board can be in scope under 14 CFR § 91.203.
+5. Do not grade completeness, writing style, or whether the answer includes
+   every possible fact. A concise or partial answer can pass if the selected
+   source chunk is in scope and directly responsive. Completeness belongs to
+   evaluation, not this gate.
+
+Respond with JSON only, no other text, in exactly this shape:
+{{
+  "answerable": true or false,
+  "reason": "<one short sentence>"
+}}
+"""
+
 
 def build_chat_client() -> ChatCompletionsClient:
     openai_endpoint = os.environ["AZURE_OPENAI_ENDPOINT"].rstrip("/")
@@ -89,6 +123,39 @@ def build_fallback_answer() -> dict:
         "excerpt_is_verbatim": None,
         "citation": None,
     }
+
+
+def check_answerability(
+    chat_client: ChatCompletionsClient,
+    user_question: str,
+    chosen_chunk: dict,
+    plain_language_summary: str,
+    verbatim_excerpt: str,
+) -> bool:
+    candidate_answer = {
+        "question": user_question,
+        "plain_language_summary": plain_language_summary,
+        "verbatim_excerpt": verbatim_excerpt,
+        "selected_source_chunk": {
+            "document": chosen_chunk.get("document"),
+            "section_number": chosen_chunk.get("section_number"),
+            "section_title": chosen_chunk.get("section_title"),
+            "chunk_text": chosen_chunk.get("chunk_text"),
+        },
+    }
+    gate_response = chat_client.complete(
+        messages=[
+            SystemMessage(content=ANSWERABILITY_GATE_SYSTEM_PROMPT),
+            UserMessage(content=json.dumps(candidate_answer, indent=2)),
+        ]
+    )
+    gate_reply_text = gate_response.choices[0].message.content
+    try:
+        gate_reply = parse_model_json_response(gate_reply_text)
+    except json.JSONDecodeError:
+        return True
+
+    return gate_reply.get("answerable") is not False
 
 
 def generate_cited_answer(
@@ -157,9 +224,19 @@ def generate_cited_answer(
         ) in normalize_for_quote_check(chosen_chunk["chunk_text"])
 
         if excerpt_is_verbatim:
+            plain_language_summary = model_reply.get("plain_language_summary", "").strip()
+            if not check_answerability(
+                chat_client,
+                user_question,
+                chosen_chunk,
+                plain_language_summary,
+                verbatim_excerpt,
+            ):
+                return build_fallback_answer()
+
             return {
                 "answer_was_found": True,
-                "plain_language_summary": model_reply.get("plain_language_summary", "").strip(),
+                "plain_language_summary": plain_language_summary,
                 "verbatim_excerpt": verbatim_excerpt,
                 "excerpt_is_verbatim": True,
                 "citation": build_citation_from_chunk(chosen_chunk),
