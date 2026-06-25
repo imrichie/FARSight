@@ -34,3 +34,6 @@ data/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Generated evaluation output
+evaluation/eval_results.json

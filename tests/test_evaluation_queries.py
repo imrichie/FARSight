@@ -10,11 +10,13 @@ REQUIRED_FIELDS = {
     "expected_citation",
     "question_type",
     "retrieval_type",
+    "answer_expectation_type",
     "notes",
 }
 
 QUESTION_TYPES = {"in_scope", "out_of_scope"}
 RETRIEVAL_TYPES = {"direct", "paraphrase", "synthesis", "trap", "refusal"}
+ANSWER_EXPECTATION_TYPES = {"direct", "list", "refusal"}
 
 
 def load_test_queries() -> list[dict]:
@@ -39,6 +41,7 @@ def test_test_query_rows_all_have_the_same_required_shape():
         assert query["question"].strip()
         assert query["question_type"] in QUESTION_TYPES
         assert query["retrieval_type"] in RETRIEVAL_TYPES
+        assert query["answer_expectation_type"] in ANSWER_EXPECTATION_TYPES
         assert isinstance(query["expected_key_facts"], list)
         assert query["expected_key_facts"]
 
@@ -64,3 +67,10 @@ def test_expected_citation_is_explicit_for_every_row():
         else:
             assert query["expected_citation"] is None
             assert query["retrieval_type"] == "refusal"
+            assert query["answer_expectation_type"] == "refusal"
+
+
+def test_in_scope_rows_are_tagged_with_answer_expectation_type():
+    for query in load_test_queries():
+        if query["question_type"] == "in_scope":
+            assert query["answer_expectation_type"] in {"direct", "list"}
