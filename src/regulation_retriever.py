@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from src.data_pipeline.chunk_persister import build_embeddings_client, build_search_client
 
 DEFAULT_CHUNKS_TO_RETRIEVE = 5
+DEFAULT_VECTOR_CANDIDATE_COUNT = 20
 
 # Every field the generation step and citation assembly will need later
 RETRIEVED_CHUNK_FIELDS = [
@@ -50,9 +51,10 @@ def retrieve_relevant_regulation_chunks(
     question_embedding = (
         build_embeddings_client().embed(input=[user_question]).data[0].embedding
     )
+    vector_candidate_count = max(chunks_to_retrieve, DEFAULT_VECTOR_CANDIDATE_COUNT)
     question_vector_query = VectorizedQuery(
         vector=question_embedding,
-        k_nearest_neighbors=chunks_to_retrieve,
+        k_nearest_neighbors=vector_candidate_count,
         fields="embedding_vector",
     )
 
