@@ -1,4 +1,6 @@
 from evaluation.eval_runner import (
+    ANSWER_JUDGE_VERSION,
+    apply_current_expectations,
     load_evaluation_results,
     run_evaluation_pipeline,
     save_evaluation_results,
@@ -6,7 +8,11 @@ from evaluation.eval_runner import (
 )
 
 
-def _query(question_type="in_scope", expected_citation="14 CFR § 91.155"):
+def _query(
+    question_type="in_scope",
+    expected_citation="14 CFR § 91.155",
+    answer_expectation_type="direct",
+):
     return {
         "id": "G-01" if question_type == "in_scope" else "R-01",
         "question": "What are the VFR weather minimums in Class C airspace?",
@@ -14,6 +20,9 @@ def _query(question_type="in_scope", expected_citation="14 CFR § 91.155"):
         "expected_citation": expected_citation,
         "question_type": question_type,
         "retrieval_type": "direct" if question_type == "in_scope" else "refusal",
+        "answer_expectation_type": (
+            answer_expectation_type if question_type == "in_scope" else "refusal"
+        ),
         "notes": None,
     }
 
@@ -93,6 +102,7 @@ def test_run_evaluation_pipeline_saves_raw_query_outputs():
 
     assert payload["metadata"]["result_count"] == 1
     assert payload["results"][0]["id"] == "G-01"
+    assert payload["results"][0]["answer_expectation_type"] == "direct"
     assert payload["results"][0]["retrieved_chunks"][0]["rank"] == 1
     assert payload["results"][0]["answer"]["citation"]["section_number"] == "91.155"
     assert payload["results"][0]["pipeline_error"] is None
@@ -218,6 +228,9 @@ def test_answer_correctness_caches_answer_judge_verdict():
         "answer_is_correct": True,
         "missing_key_facts": [],
         "reason": "all key facts are present",
+        "answer_judge_version": ANSWER_JUDGE_VERSION,
+        "judged_expected_key_facts": ["3 SM visibility"],
+        "judged_answer_expectation_type": "direct",
     }
 
 
@@ -233,6 +246,9 @@ def test_answer_correctness_reuses_cached_answer_judge_verdict():
                     "answer_is_correct": True,
                     "missing_key_facts": [],
                     "reason": "cached verdict",
+                    "answer_judge_version": ANSWER_JUDGE_VERSION,
+                    "judged_expected_key_facts": ["3 SM visibility"],
+                    "judged_answer_expectation_type": "direct",
                 },
             }
         ]
@@ -244,6 +260,90 @@ def test_answer_correctness_reuses_cached_answer_judge_verdict():
     scorecard = score_evaluation_results(payload, answer_judge=fail_if_called)
 
     assert scorecard["summary"]["answer_correctness"]["passed"] == 1
+
+
+def test_answer_correctness_refreshes_stale_cached_judgment():
+    payload = {
+        "results": [
+            {
+                **_query(),
+                "retrieved_chunks": [_chunk()],
+                "answer": _answer(),
+                "pipeline_error": None,
+                "answer_judgment": {
+                    "answer_is_correct": False,
+                    "missing_key_facts": ["old fact"],
+                    "reason": "old verdict",
+                    "answer_judge_version": "old-version",
+                    "judged_expected_key_facts": ["old fact"],
+                    "judged_answer_expectation_type": "list",
+                },
+            }
+        ]
+    }
+
+    scorecard = score_evaluation_results(payload, answer_judge=_passing_judge)
+
+    assert scorecard["summary"]["answer_correctness"]["passed"] == 1
+    assert payload["results"][0]["answer_judgment"]["answer_judge_version"] == (
+        ANSWER_JUDGE_VERSION
+    )
+
+
+def test_answer_correctness_refreshes_judgment_for_changed_expectation_type():
+    payload = {
+        "results": [
+            {
+                **_query(answer_expectation_type="list"),
+                "retrieved_chunks": [_chunk()],
+                "answer": _answer(),
+                "pipeline_error": None,
+                "answer_judgment": {
+                    "answer_is_correct": False,
+                    "missing_key_facts": ["3 SM visibility"],
+                    "reason": "old direct verdict",
+                    "answer_judge_version": ANSWER_JUDGE_VERSION,
+                    "judged_expected_key_facts": ["3 SM visibility"],
+                    "judged_answer_expectation_type": "direct",
+                },
+            }
+        ]
+    }
+
+    scorecard = score_evaluation_results(payload, answer_judge=_passing_judge)
+
+    assert scorecard["summary"]["answer_correctness"]["passed"] == 1
+    assert payload["results"][0]["answer_judgment"][
+        "judged_answer_expectation_type"
+    ] == "list"
+
+
+def test_score_only_expectations_can_be_refreshed_from_current_queries():
+    payload = {
+        "metadata": {},
+        "results": [
+            {
+                **_query(),
+                "expected_key_facts": ["old fact"],
+                "expected_citation": "14 CFR § 91.999",
+                "answer_expectation_type": "list",
+                "retrieved_chunks": [_chunk()],
+                "answer": _answer(),
+                "pipeline_error": None,
+            }
+        ],
+    }
+    current_query = {
+        **_query(answer_expectation_type="direct"),
+        "expected_key_facts": ["new fact"],
+        "expected_citation": "14 CFR § 91.155",
+    }
+
+    apply_current_expectations(payload, [current_query])
+
+    assert payload["results"][0]["expected_key_facts"] == ["new fact"]
+    assert payload["results"][0]["expected_citation"] == "14 CFR § 91.155"
+    assert payload["results"][0]["answer_expectation_type"] == "direct"
 
 
 def test_out_of_scope_question_passes_when_fallback_answer_is_returned():

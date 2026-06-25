@@ -28,12 +28,14 @@ from src.regulation_retriever import (
 
 TEST_QUERY_FILE = Path("evaluation/test_queries.jsonl")
 DEFAULT_RESULTS_FILE = Path("evaluation/eval_results.json")
+ANSWER_JUDGE_VERSION = "concise-natural-v1"
 
 ANSWER_JUDGE_SYSTEM_PROMPT = """\
 You are a strict evaluator for FARSight, a FAA regulation question-answering tool.
 
 You will receive:
 - a pilot question
+- an answer expectation type: "direct" or "list"
 - the expected key facts
 - the generated answer summary
 - the generated verbatim excerpt, if any
@@ -43,6 +45,13 @@ Count equivalent wording as present, including common aviation abbreviations
 and unit expansions such as "SM" and "statute miles". Do not give credit for
 facts that are only implied, absent, contradicted, or outside the generated
 answer text.
+
+For "direct" questions, reward concise, natural answers that answer exactly
+what the pilot asked. Do not require extra related facts, caveats, or a full
+regulatory checklist unless those facts are listed in expected_key_facts.
+
+For "list" questions, require every expected key fact because the question
+genuinely asks for a set of required items or conditions.
 
 Respond with JSON only, in exactly this shape:
 {
@@ -131,6 +140,7 @@ def run_query_through_pipeline(
         "question": query["question"],
         "question_type": query["question_type"],
         "retrieval_type": query["retrieval_type"],
+        "answer_expectation_type": query["answer_expectation_type"],
         "expected_key_facts": query["expected_key_facts"],
         "expected_citation": query["expected_citation"],
         "notes": query["notes"],
@@ -207,6 +217,9 @@ def build_failed_answer_judgment(result: dict, reason: str) -> dict:
         "answer_is_correct": False,
         "missing_key_facts": result.get("expected_key_facts", []),
         "reason": reason,
+        "answer_judge_version": ANSWER_JUDGE_VERSION,
+        "judged_expected_key_facts": result.get("expected_key_facts", []),
+        "judged_answer_expectation_type": result.get("answer_expectation_type"),
     }
 
 
@@ -219,6 +232,7 @@ def judge_answer_correctness(result: dict) -> dict:
     expected_key_facts = result["expected_key_facts"]
     user_message = {
         "question": result["question"],
+        "answer_expectation_type": result["answer_expectation_type"],
         "expected_key_facts": expected_key_facts,
         "generated_answer_text": answer_text,
     }
@@ -246,6 +260,9 @@ def judge_answer_correctness(result: dict) -> dict:
         "answer_is_correct": judgment.get("answer_is_correct") is True,
         "missing_key_facts": missing_key_facts,
         "reason": str(judgment.get("reason", "")).strip(),
+        "answer_judge_version": ANSWER_JUDGE_VERSION,
+        "judged_expected_key_facts": expected_key_facts,
+        "judged_answer_expectation_type": result["answer_expectation_type"],
     }
 
 
@@ -285,8 +302,20 @@ def score_answer_correctness(
     answer_judge: Callable[[dict], dict] = judge_answer_correctness,
 ) -> dict:
     judgment = result.get("answer_judgment")
-    if not judgment:
+    cached_judgment_is_current = (
+        judgment
+        and judgment.get("answer_judge_version") == ANSWER_JUDGE_VERSION
+        and judgment.get("judged_expected_key_facts") == result.get("expected_key_facts", [])
+        and judgment.get("judged_answer_expectation_type")
+        == result.get("answer_expectation_type")
+    )
+    if not cached_judgment_is_current:
         judgment = answer_judge(result)
+        judgment["answer_judge_version"] = ANSWER_JUDGE_VERSION
+        judgment["judged_expected_key_facts"] = result.get("expected_key_facts", [])
+        judgment["judged_answer_expectation_type"] = result.get(
+            "answer_expectation_type"
+        )
         result["answer_judgment"] = judgment
 
     return {
@@ -363,6 +392,32 @@ def score_evaluation_results(
     }
 
 
+def apply_current_expectations(results_payload: dict, test_queries: list[dict]) -> dict:
+    """Refresh expected facts/citations in saved results before scoring them."""
+    test_queries_by_id = {query["id"]: query for query in test_queries}
+
+    for result in results_payload["results"]:
+        current_query = test_queries_by_id.get(result["id"])
+        if not current_query:
+            continue
+
+        for field in [
+            "question",
+            "question_type",
+            "retrieval_type",
+            "answer_expectation_type",
+            "expected_key_facts",
+            "expected_citation",
+            "notes",
+        ]:
+            result[field] = current_query[field]
+
+    results_payload.setdefault("metadata", {})["expectations_refreshed_from"] = str(
+        TEST_QUERY_FILE
+    )
+    return results_payload
+
+
 def format_metric_line(metric_name: str, metric_summary: dict) -> str:
     if metric_summary["total"] == 0:
         return f"{metric_name}: n/a"
@@ -437,6 +492,10 @@ def main() -> None:
 
     if args.score_only:
         results_payload = load_evaluation_results(args.results_file)
+        results_payload = apply_current_expectations(
+            results_payload,
+            load_test_queries(TEST_QUERY_FILE),
+        )
     else:
         test_queries = load_test_queries(TEST_QUERY_FILE)
         results_payload = run_evaluation_pipeline(
