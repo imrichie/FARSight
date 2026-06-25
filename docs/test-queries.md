@@ -72,7 +72,7 @@ The test query set is FARSight's definition of "it works." Every question pairs 
 | ID | Question | Expected key facts | Expected citation | Type |
 |---|---|---|---|---|
 | G-33 | What altitudes does Class A airspace cover? | 18,000 ft MSL up to and including FL600 | 14 CFR § 71.33 (AIM 3-2-2) | direct |
-| G-34 | What class of airspace is a Victor airway and how wide is it? | Federal airways are Class E; extend 4 NM each side of centerline, from 1,200 ft AGL up to but not including 18,000 MSL | 14 CFR § 71.75 (AIM 3-2-6) | synthesis |
+| G-34 | What class of airspace is a Victor airway and how wide is it? | Federal airways are Class E; extend 4 NM each side of centerline, from 1,200 ft AGL up to but not including 18,000 MSL | AIM 3-2-6 | synthesis |
 
 ### AIM — Aeronautical Information Manual
 
