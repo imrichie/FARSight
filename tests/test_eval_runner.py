@@ -1,6 +1,10 @@
+import json
+
+import evaluation.eval_runner as eval_runner
 from evaluation.eval_runner import (
     ANSWER_JUDGE_VERSION,
     apply_current_expectations,
+    judge_answer_correctness,
     load_evaluation_results,
     run_evaluation_pipeline,
     save_evaluation_results,
@@ -81,6 +85,36 @@ def _failing_judge(_result):
         "missing_key_facts": ["3 SM visibility"],
         "reason": "visibility is missing",
     }
+
+
+class _FakeMessage:
+    def __init__(self, content):
+        self.content = content
+
+
+class _FakeChoice:
+    def __init__(self, content):
+        self.message = _FakeMessage(content)
+
+
+class _FakeResponse:
+    def __init__(self, content):
+        self.choices = [_FakeChoice(content)]
+
+
+class _FakeChatClient:
+    def __init__(self, replies):
+        self.replies = list(replies)
+        self.calls = []
+
+    def complete(self, messages, **completion_options):
+        self.calls.append(
+            {
+                "messages": messages,
+                "completion_options": completion_options,
+            }
+        )
+        return _FakeResponse(json.dumps(self.replies.pop(0)))
 
 
 def test_run_evaluation_pipeline_saves_raw_query_outputs():
@@ -208,6 +242,124 @@ def test_answer_correctness_uses_answer_judge_verdict():
 
     assert metric["passed"] is False
     assert metric["actual"]["missing_key_facts"] == ["3 SM visibility"]
+
+
+def test_model_judge_rechecks_failed_judgment_and_accepts_supported_answer(monkeypatch):
+    client = _FakeChatClient(
+        [
+            {
+                "answer_is_correct": False,
+                "missing_key_facts": ["24 hours after decompression dives"],
+                "reason": "decompression wait is missing",
+            },
+            {
+                "answer_is_correct": True,
+                "missing_key_facts": [],
+                "reason": "the excerpt includes the decompression wait",
+            },
+        ]
+    )
+    monkeypatch.setattr(eval_runner, "build_chat_client", lambda: client)
+    result = {
+        **_query(answer_expectation_type="list"),
+        "expected_key_facts": [
+            "12 hours after a non-decompression dive before flights up to 8,000 ft",
+            "24 hours after decompression dives",
+        ],
+        "answer": {
+            **_answer(),
+            "plain_language_summary": (
+                "Wait 12 hours after a non-decompression dive and 24 hours if "
+                "the dive required a controlled ascent."
+            ),
+            "verbatim_excerpt": (
+                "The recommended wait time is at least 24 hours after diving "
+                "that required a controlled ascent (i.e., decompression stop diving)."
+            ),
+        },
+    }
+
+    judgment = judge_answer_correctness(result)
+
+    assert judgment["answer_is_correct"] is True
+    assert judgment["missing_key_facts"] == []
+    assert judgment["answer_judge_rechecked"] is True
+    assert len(client.calls) == 2
+
+
+def test_model_judge_recheck_keeps_confirmed_failure(monkeypatch):
+    client = _FakeChatClient(
+        [
+            {
+                "answer_is_correct": False,
+                "missing_key_facts": ["3 SM visibility"],
+                "reason": "visibility is missing",
+            },
+            {
+                "answer_is_correct": False,
+                "missing_key_facts": ["3 SM visibility"],
+                "reason": "the answer only discusses cloud clearance",
+            },
+        ]
+    )
+    monkeypatch.setattr(eval_runner, "build_chat_client", lambda: client)
+    result = {
+        **_query(),
+        "answer": {
+            **_answer(),
+            "plain_language_summary": "Stay 500 feet below the clouds.",
+            "verbatim_excerpt": "Aircraft must remain 500 feet below clouds.",
+        },
+    }
+
+    judgment = judge_answer_correctness(result)
+
+    assert judgment["answer_is_correct"] is False
+    assert judgment["missing_key_facts"] == ["3 SM visibility"]
+    assert judgment["reason"] == "the answer only discusses cloud clearance"
+    assert judgment["answer_judge_rechecked"] is True
+    assert len(client.calls) == 2
+
+
+def test_model_judge_evidence_check_accepts_supported_numeric_fact(monkeypatch):
+    client = _FakeChatClient(
+        [
+            {
+                "answer_is_correct": False,
+                "missing_key_facts": ["24 hours after decompression dives"],
+                "reason": "decompression wait is missing",
+            },
+            {
+                "answer_is_correct": False,
+                "missing_key_facts": ["24 hours after decompression dives"],
+                "reason": "not stated as a standalone rule",
+            },
+        ]
+    )
+    monkeypatch.setattr(eval_runner, "build_chat_client", lambda: client)
+    result = {
+        **_query(answer_expectation_type="list"),
+        "expected_key_facts": [
+            "24 hours after decompression dives",
+        ],
+        "answer": {
+            **_answer(),
+            "plain_language_summary": (
+                "Wait 24 hours if the dive required a controlled ascent."
+            ),
+            "verbatim_excerpt": (
+                "The recommended wait time is at least 24 hours after diving "
+                "that required a controlled ascent (i.e., decompression stop diving)."
+            ),
+        },
+    }
+
+    judgment = judge_answer_correctness(result)
+
+    assert judgment["answer_is_correct"] is True
+    assert judgment["missing_key_facts"] == []
+    assert judgment["answer_judge_rechecked"] is True
+    assert judgment["answer_judge_evidence_checked"] is True
 
 
 def test_answer_correctness_caches_answer_judge_verdict():

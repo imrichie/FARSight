@@ -36,4 +36,4 @@ data/
 htmlcov/
 
 # Generated evaluation output
-evaluation/eval_results.json
+evaluation/eval_results*.json
