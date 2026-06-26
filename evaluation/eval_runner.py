@@ -29,6 +29,11 @@ from src.regulation_retriever import (
 TEST_QUERY_FILE = Path("evaluation/test_queries.jsonl")
 DEFAULT_RESULTS_FILE = Path("evaluation/eval_results.json")
 ANSWER_JUDGE_VERSION = "concise-natural-v1"
+ANSWER_JUDGE_COMPLETION_OPTIONS = {
+    "temperature": 0,
+    "response_format": "json_object",
+    "seed": 1,
+}
 
 ANSWER_JUDGE_SYSTEM_PROMPT = """\
 You are a strict evaluator for FARSight, a FAA regulation question-answering tool.
@@ -242,7 +247,8 @@ def judge_answer_correctness(result: dict) -> dict:
             messages=[
                 SystemMessage(content=ANSWER_JUDGE_SYSTEM_PROMPT),
                 UserMessage(content=json.dumps(user_message, indent=2)),
-            ]
+            ],
+            **ANSWER_JUDGE_COMPLETION_OPTIONS,
         )
         model_reply = response.choices[0].message.content
         judgment = parse_model_json_response(model_reply)

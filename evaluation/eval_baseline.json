@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "name": "Milestone 5 accepted eval baseline",
+  "purpose": "Regression baseline for the live evaluation gate. This is not a perfection target; it is the committed quality floor. Pull requests may improve it, but may not silently drop below it or introduce new failed question IDs.",
+  "test_query_file": "evaluation/test_queries.jsonl",
+  "accepted_after": "Issue #48 and Issue #49 eval triage",
+  "metrics": {
+    "retrieval_hit_rate": {
+      "passed": 42,
+      "total": 42,
+      "accepted_failures": []
+    },
+    "citation_accuracy": {
+      "passed": 40,
+      "total": 42,
+      "accepted_failures": [
+        {
+          "id": "G-21",
+          "category": "data_parsing_table_extraction",
+          "reason": "The answer lives in the 14 CFR 61.23(d) duration table, but the parsed chunk text only contains the table lead-in. Fixing this belongs in PDF table extraction/re-chunking, not generation."
+        },
+        {
+          "id": "G-34",
+          "category": "single_excerpt_multi_source",
+          "reason": "The Victor airway class and width facts span multiple AIM chunks. v1 deliberately avoids stitching a synthesized answer across several excerpts."
+        }
+      ]
+    },
+    "answer_correctness": {
+      "passed": 28,
+      "total": 42,
+      "accepted_failures": [
+        {
+          "id": "G-01",
+          "category": "single_excerpt_list_completeness",
+          "reason": "Class C VFR weather minimums are a list-style answer; v1 favors one concise source excerpt over exhaustive synthesis."
+        },
+        {
+          "id": "G-02",
+          "category": "single_excerpt_list_completeness",
+          "reason": "Transponder requirements are spread across several conditions; v1 may answer from the strongest excerpt without listing every condition."
+        },
+        {
+          "id": "G-08",
+          "category": "single_excerpt_list_completeness",
+          "reason": "Supplemental oxygen requirements have multiple altitude tiers; current v1 answers can be correct but non-exhaustive."
+        },
+        {
+          "id": "G-10",
+          "category": "single_excerpt_multi_source",
+          "reason": "Required aircraft inspections span several sections. v1 cites the annual inspection source rather than synthesizing an exhaustive checklist across sections."
+        },
+        {
+          "id": "G-14",
+          "category": "single_excerpt_list_completeness",
+          "reason": "Required aircraft documents can require more than one supported item; current v1 may omit one checklist item while preserving citation trust."
+        },
+        {
+          "id": "G-15",
+          "category": "single_excerpt_list_completeness",
+          "reason": "Class B entry requirements are a multi-item checklist; current v1 may answer the clearance requirement without every related equipment item."
+        },
+        {
+          "id": "G-17",
+          "category": "single_excerpt_list_completeness",
+          "reason": "PIC document carriage spans several required documents; current v1 may omit one item rather than synthesize beyond one excerpt."
+        },
+        {
+          "id": "G-21",
+          "category": "data_parsing_table_extraction",
+          "reason": "The required duration facts are in a PDF table that is not reliably present in parsed chunk text."
+        },
+        {
+          "id": "G-22",
+          "category": "single_excerpt_list_completeness",
+          "reason": "Private pilot aeronautical experience is a long requirements list; current v1 answers can be partial under the single-excerpt design."
+        },
+        {
+          "id": "G-27",
+          "category": "concise_answer_completeness",
+          "reason": "The current answer is concise and cited but can miss one applicability detail. This is tracked as completeness behavior, not citation trust."
+        },
+        {
+          "id": "G-34",
+          "category": "single_excerpt_multi_source",
+          "reason": "The expected Class E and airway-width facts live in different AIM chunks, conflicting with the v1 single-excerpt verification model."
+        },
+        {
+          "id": "G-37",
+          "category": "single_excerpt_list_completeness",
+          "reason": "Hypoxia symptoms and types are a broad list-style answer; current v1 may answer symptoms without exhaustively naming every type."
+        },
+        {
+          "id": "G-39",
+          "category": "source_expectation_tension",
+          "reason": "The accepted citation is AIM 4-3-3, but the expected 45-degree entry phrasing is not cleanly supported by that chunk's text. Current v1 prioritizes the cited source text."
+        },
+        {
+          "id": "G-42",
+          "category": "single_excerpt_list_completeness",
+          "reason": "Runway holding-position markings include shape, side, and clearance meaning; current v1 can be correct but non-exhaustive."
+        }
+      ]
+    },
+    "correct_refusal_rate": {
+      "passed": 8,
+      "total": 8,
+      "accepted_failures": []
+    }
+  }
+}
