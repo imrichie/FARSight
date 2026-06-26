@@ -22,6 +22,12 @@ The test query set is FARSight's definition of "it works." Every question pairs 
 - **list** — the question genuinely asks for a set of required items, so all expected key facts are required
 - **refusal** — outside the supported corpus or product scope; the correct behavior is the uncertainty state
 
+**Milestone 5 triage notes**
+
+- List-style rows are intentionally stricter than the v1 answer design. They remain useful as regression checks, but failures on broad list questions can reflect the product decision to return one concise, verifiable excerpt rather than synthesize across several chunks.
+- G-21 is a data-pipeline limitation: the relevant 14 CFR § 61.23(d) duration table is not reliably present in the parsed chunk text. Fixing it belongs in PDF parsing/re-chunking, not generation.
+- G-34 is a single-excerpt limitation: the airspace class and airway-width facts live in different AIM chunks. It belongs to the list-completeness design decision, not a separate chunk-selection bug.
+
 ---
 
 ## In-Corpus Questions (G-01 – G-42)

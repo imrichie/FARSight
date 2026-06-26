@@ -31,6 +31,7 @@ FARSight never asks to be trusted. Every answer shows the exact FAR/AIM section 
 - **Single-turn Q&A.** One question in, one cited answer out.
 - **Knowledge base:** the AIM plus 14 CFR Parts 61, 91, 71, and 67. Versioned, with a "current as of" date shown to the user.
 - **Grounded citations.** Every answer cites the exact section (e.g., *14 CFR § 91.215*). The citation comes from the retrieved document's metadata — the model never writes a section number itself.
+- **Concise, verifiable answers.** FARSight gives a plain answer plus one verbatim source excerpt. It optimizes for "show me the exact support" over exhaustive synthesis.
 - **An honest uncertainty state.** When retrieval confidence is too low, FARSight shows the "couldn't find a confident answer" state. It never guesses.
 - **A responsive web app**, built to the FARSight Design System coming out of Figma.
 - **Evaluation.** A ~50-question test query set with expected answers and citations, run automatically as a quality gate.
@@ -43,6 +44,7 @@ FARSight never asks to be trusted. Every answer shows the exact FAR/AIM section 
 | Accounts and personalization | Nothing in v1 needs to know who you are. Pure overhead. |
 | Parts 121 / 135 / 141 | Commercial and flight-school ops are a different user with different stakes. Scope creep. |
 | Weather, NOTAMs, flight planning | ForeFlight already does that job well. FARSight does regulations. |
+| Exhaustive multi-source checklist answers | A stitched answer from several chunks can be useful, but it weakens the one-excerpt verification model. v1 favors a concise answer grounded in one source over an answer that looks complete but is harder to verify. |
 | Multi-model selection | Which model to use is a product decision, not a user preference. One model, evaluated properly. |
 | Native mobile apps | Responsive web covers how people actually study. |
 | Legal advice | FARSight is a study aid. It shows you what the regulation says — it doesn't rule on whether your specific flight was legal. |
@@ -63,6 +65,8 @@ All of this gets measured against the test query set, automatically, in CI.
 
 - **The model makes up a citation.** It structurally can't — section numbers come from retrieval metadata, never from the model. Evaluation verifies this on every run.
 - **Chunking breaks the legal structure.** A regulation separated from its exceptions changes meaning. We chunk along section boundaries — there's a dedicated decision note on this.
+- **A question needs facts from several chunks.** Some list-style questions genuinely span multiple sections or chunks. v1 deliberately does not splice several excerpts into one synthesized answer; it returns a concise, verifiable answer from the best source, or the uncertainty state when one source cannot support the answer.
+- **PDF tables don't extract cleanly.** Some regulatory answers live in tables, and PDF table extraction is unreliable. When a table is missing from chunk text, the fix belongs in the data pipeline and source parsing, not in generation.
 - **The regulations change.** The corpus is versioned, and every answer shows its "current as of" date.
 - **People trust it too much.** The source excerpt is always right there to check, the study-aid disclaimer is persistent, and the system prefers saying "I'm not sure" over a shaky answer.
 
