@@ -37,9 +37,10 @@ export function QuestionInput({
   return (
     <form onSubmit={submitQuestion} className="w-full">
       <div
-        className={`flex items-end gap-3 rounded-xl border border-border bg-muted shadow-inner transition-colors focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20 ${
+        className={`flex items-end gap-3 rounded-2xl border border-border bg-card transition-all focus-within:border-primary/40 focus-within:shadow-[var(--shadow-glow)] ${
           compact ? 'p-2' : 'p-3 sm:p-4'
         }`}
+        style={{ boxShadow: 'var(--shadow-md)' }}
       >
         <textarea
           aria-label="Ask a FAR/AIM question"
@@ -49,12 +50,12 @@ export function QuestionInput({
           placeholder={placeholder}
           disabled={disabled}
           rows={compact ? 1 : 2}
-          className="max-h-32 min-h-12 flex-1 resize-none bg-transparent px-1 py-3 text-base text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-70 sm:text-lg"
+          className="max-h-32 min-h-12 flex-1 resize-none bg-transparent px-2 py-3 text-base text-foreground outline-none placeholder:text-muted-foreground/60 disabled:opacity-70 sm:text-lg"
         />
         <button
           type="submit"
           disabled={!question.trim() || disabled}
-          className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-all hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-45"
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary-hover text-primary-foreground shadow-sm transition-all hover:shadow-md active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-40 disabled:shadow-none"
           aria-label="Submit question"
         >
           <ArrowRight className="h-5 w-5" aria-hidden="true" />

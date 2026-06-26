@@ -24,8 +24,8 @@ export function ConversationScreen({
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader showHomeAction onHome={onHome} />
-      <main className="mx-auto flex min-h-[calc(100vh-73px)] max-w-4xl flex-col px-6">
-        <div className="flex-1 space-y-8 py-8 sm:py-10">
+      <main className="mx-auto flex min-h-[calc(100vh-57px)] max-w-3xl flex-col px-6">
+        <div className="flex-1 space-y-6 py-8 sm:py-10">
           <QuestionDisplay question={question} />
 
           {isLoading ? <LoadingDots /> : null}
@@ -43,7 +43,7 @@ export function ConversationScreen({
           ) : null}
         </div>
 
-        <div className="sticky bottom-0 border-t border-border bg-background/95 py-4 backdrop-blur">
+        <div className="sticky bottom-0 border-t border-border/60 bg-background/90 py-4 backdrop-blur-lg">
           <QuestionInput
             onSubmit={onAsk}
             disabled={isLoading}
