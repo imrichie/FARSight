@@ -28,7 +28,7 @@ from src.regulation_retriever import (
 
 TEST_QUERY_FILE = Path("evaluation/test_queries.jsonl")
 DEFAULT_RESULTS_FILE = Path("evaluation/eval_results.json")
-ANSWER_JUDGE_VERSION = "concise-natural-v1"
+ANSWER_JUDGE_VERSION = "concise-natural-v2"
 ANSWER_JUDGE_COMPLETION_OPTIONS = {
     "temperature": 0,
     "response_format": "json_object",
@@ -62,6 +62,36 @@ Respond with JSON only, in exactly this shape:
 {
   "answer_is_correct": true or false,
   "missing_key_facts": ["any expected key facts that are absent"],
+  "reason": "one short sentence"
+}
+"""
+
+ANSWER_RECHECK_SYSTEM_PROMPT = """\
+You are the second-pass verifier for FARSight's answer correctness evaluation.
+
+The first evaluator marked an answer incorrect and listed missing key facts.
+Your job is narrower: check whether those allegedly missing facts are actually
+present in the generated answer summary or generated verbatim excerpt.
+
+Use this process:
+1. For each expected key fact, look for a supporting fragment in either the
+   summary or excerpt.
+2. Count equivalent wording, aviation abbreviations, parenthetical definitions,
+   and "i.e." definitions as present when the generated text establishes the
+   same meaning.
+3. Count pronoun or shorthand references as present when the antecedent appears
+   in the same sentence or the immediately preceding sentence.
+4. Do not require the exact expected wording if the same quantity, condition,
+   and action are all supported by the generated text.
+5. Do not infer facts from outside knowledge.
+
+Return answer_is_correct true only if every expected key fact is present in the
+generated text. Otherwise return false and list the facts that are still absent.
+
+Respond with JSON only, in exactly this shape:
+{
+  "answer_is_correct": true or false,
+  "missing_key_facts": ["any expected key facts that are still absent"],
   "reason": "one short sentence"
 }
 """
@@ -217,6 +247,18 @@ def answer_text_for_judging(answer: dict | None) -> str:
     return "\n\n".join(part.strip() for part in answer_parts if part and part.strip())
 
 
+def answer_summary_for_judging(answer: dict | None) -> str:
+    if not answer or not answer.get("answer_was_found"):
+        return ""
+    return (answer.get("plain_language_summary") or "").strip()
+
+
+def answer_excerpt_for_judging(answer: dict | None) -> str:
+    if not answer or not answer.get("answer_was_found"):
+        return ""
+    return (answer.get("verbatim_excerpt") or "").strip()
+
+
 def build_failed_answer_judgment(result: dict, reason: str) -> dict:
     return {
         "answer_is_correct": False,
@@ -226,6 +268,48 @@ def build_failed_answer_judgment(result: dict, reason: str) -> dict:
         "judged_expected_key_facts": result.get("expected_key_facts", []),
         "judged_answer_expectation_type": result.get("answer_expectation_type"),
     }
+
+
+def normalize_answer_judgment(judgment: dict, expected_key_facts: list[str]) -> dict:
+    missing_key_facts = judgment.get("missing_key_facts", [])
+    if not isinstance(missing_key_facts, list):
+        missing_key_facts = expected_key_facts
+
+    return {
+        "answer_is_correct": judgment.get("answer_is_correct") is True,
+        "missing_key_facts": missing_key_facts,
+        "reason": str(judgment.get("reason", "")).strip(),
+    }
+
+
+def request_model_judgment(system_prompt: str, user_message: dict) -> dict:
+    response = build_chat_client().complete(
+        messages=[
+            SystemMessage(content=system_prompt),
+            UserMessage(content=json.dumps(user_message, indent=2)),
+        ],
+        **ANSWER_JUDGE_COMPLETION_OPTIONS,
+    )
+    model_reply = response.choices[0].message.content
+    return parse_model_json_response(model_reply)
+
+
+def recheck_failed_answer_judgment(
+    result: dict,
+    initial_judgment: dict,
+) -> dict:
+    expected_key_facts = result["expected_key_facts"]
+    user_message = {
+        "question": result["question"],
+        "answer_expectation_type": result["answer_expectation_type"],
+        "expected_key_facts": expected_key_facts,
+        "initial_missing_key_facts": initial_judgment.get("missing_key_facts", []),
+        "generated_answer_summary": answer_summary_for_judging(result.get("answer")),
+        "generated_verbatim_excerpt": answer_excerpt_for_judging(result.get("answer")),
+        "generated_answer_text": answer_text_for_judging(result.get("answer")),
+    }
+    judgment = request_model_judgment(ANSWER_RECHECK_SYSTEM_PROMPT, user_message)
+    return normalize_answer_judgment(judgment, expected_key_facts)
 
 
 def judge_answer_correctness(result: dict) -> dict:
@@ -239,36 +323,35 @@ def judge_answer_correctness(result: dict) -> dict:
         "question": result["question"],
         "answer_expectation_type": result["answer_expectation_type"],
         "expected_key_facts": expected_key_facts,
-        "generated_answer_text": answer_text,
+        "generated_answer_summary": answer_summary_for_judging(result.get("answer")),
+        "generated_verbatim_excerpt": answer_excerpt_for_judging(result.get("answer")),
     }
 
     try:
-        response = build_chat_client().complete(
-            messages=[
-                SystemMessage(content=ANSWER_JUDGE_SYSTEM_PROMPT),
-                UserMessage(content=json.dumps(user_message, indent=2)),
-            ],
-            **ANSWER_JUDGE_COMPLETION_OPTIONS,
+        judgment = normalize_answer_judgment(
+            request_model_judgment(ANSWER_JUDGE_SYSTEM_PROMPT, user_message),
+            expected_key_facts,
         )
-        model_reply = response.choices[0].message.content
-        judgment = parse_model_json_response(model_reply)
+        if not judgment["answer_is_correct"] and judgment["missing_key_facts"]:
+            rechecked_judgment = recheck_failed_answer_judgment(result, judgment)
+            judgment = {
+                **rechecked_judgment,
+                "answer_judge_rechecked": True,
+            }
     except Exception as error:  # noqa: BLE001 - judge failures should be scorecard-visible.
         return build_failed_answer_judgment(
             result,
             f"answer judge failed: {type(error).__name__}: {error}",
         )
 
-    missing_key_facts = judgment.get("missing_key_facts", [])
-    if not isinstance(missing_key_facts, list):
-        missing_key_facts = expected_key_facts
-
     return {
-        "answer_is_correct": judgment.get("answer_is_correct") is True,
-        "missing_key_facts": missing_key_facts,
-        "reason": str(judgment.get("reason", "")).strip(),
+        "answer_is_correct": judgment["answer_is_correct"],
+        "missing_key_facts": judgment["missing_key_facts"],
+        "reason": judgment["reason"],
         "answer_judge_version": ANSWER_JUDGE_VERSION,
         "judged_expected_key_facts": expected_key_facts,
         "judged_answer_expectation_type": result["answer_expectation_type"],
+        "answer_judge_rechecked": judgment.get("answer_judge_rechecked", False),
     }
 
 

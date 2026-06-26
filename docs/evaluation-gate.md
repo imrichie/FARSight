@@ -110,6 +110,12 @@ The eval runner also caches answer-judge verdicts in the saved results file.
 CI still runs a fresh eval, but the scoring step does not re-judge answers it
 has already judged in that run.
 
+If the first answer-correctness judgment fails, the runner performs one narrow
+second-pass recheck against the generated summary and verbatim excerpt. The
+recheck does not lower the standard; it only asks whether the specific facts
+reported missing are actually present in the text. This catches avoidable
+false negatives from the judge while keeping genuine missing facts as failures.
+
 This reduces judge noise. It does not pretend live model systems are perfectly
 static forever.
 
