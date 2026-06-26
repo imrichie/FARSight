@@ -1,6 +1,10 @@
-export function BrandMark() {
-  return (
-    <div className="inline-flex items-center gap-2.5">
+type BrandMarkProps = {
+  onClick?: () => void
+}
+
+export function BrandMark({ onClick }: BrandMarkProps) {
+  const content = (
+    <>
       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary-hover shadow-sm">
         <svg
           width="18"
@@ -20,6 +24,20 @@ export function BrandMark() {
       <span className="text-lg font-bold tracking-tight text-foreground">
         FARSight
       </span>
-    </div>
+    </>
   )
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="inline-flex items-center gap-2.5 transition-opacity hover:opacity-80"
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return <div className="inline-flex items-center gap-2.5">{content}</div>
 }

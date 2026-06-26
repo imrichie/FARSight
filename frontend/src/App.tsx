@@ -2,38 +2,42 @@ import { useState } from 'react'
 import { queryMockFarsight } from './data/mockResponses'
 import { ConversationScreen } from './screens/ConversationScreen'
 import { HomeScreen } from './screens/HomeScreen'
-import type { MockFarsightResponse } from './types/farsight'
+import type { ConversationEntry } from './types/farsight'
 
 export function App() {
-  const [activeQuestion, setActiveQuestion] = useState('')
-  const [response, setResponse] = useState<MockFarsightResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [entries, setEntries] = useState<ConversationEntry[]>([])
 
   async function askQuestion(question: string) {
-    setActiveQuestion(question)
-    setResponse(null)
-    setIsLoading(true)
+    const id = crypto.randomUUID()
+    const newEntry: ConversationEntry = {
+      id,
+      question,
+      response: null,
+      isLoading: true,
+    }
+
+    setEntries((previous) => [...previous, newEntry])
 
     const mockResponse = await queryMockFarsight(question)
-    setResponse(mockResponse)
-    setIsLoading(false)
+
+    setEntries((previous) =>
+      previous.map((entry) =>
+        entry.id === id ? { ...entry, response: mockResponse, isLoading: false } : entry,
+      ),
+    )
   }
 
   function returnHome() {
-    setActiveQuestion('')
-    setResponse(null)
-    setIsLoading(false)
+    setEntries([])
   }
 
-  if (!activeQuestion) {
+  if (entries.length === 0) {
     return <HomeScreen onAsk={askQuestion} />
   }
 
   return (
     <ConversationScreen
-      question={activeQuestion}
-      response={response}
-      isLoading={isLoading}
+      entries={entries}
       onAsk={askQuestion}
       onHome={returnHome}
     />

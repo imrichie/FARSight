@@ -19,3 +19,10 @@ export type MockFarsightResponse =
       excerpt: null
       citation: null
     }
+
+export type ConversationEntry = {
+  id: string
+  question: string
+  response: MockFarsightResponse | null
+  isLoading: boolean
+}

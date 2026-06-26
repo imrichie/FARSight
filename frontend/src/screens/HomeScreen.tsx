@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react'
+import { BookOpen } from 'lucide-react'
 import { BrandPill } from '../components/BrandPill'
 import { ExampleQuestionCard } from '../components/ExampleQuestionCard'
 import { NavigationHeader } from '../components/NavigationHeader'
@@ -28,8 +28,8 @@ export function HomeScreen({ onAsk }: HomeScreenProps) {
           <section className="space-y-10">
             <div className="space-y-6">
               <BrandPill variant="primary">
-                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-                Powered by FAR/AIM
+                <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                FAR/AIM + AI-powered search
               </BrandPill>
               <div className="space-y-5">
                 <h1 className="max-w-2xl text-balance text-4xl font-extrabold leading-[1.1] tracking-tight text-foreground sm:text-5xl md:text-6xl">
@@ -48,19 +48,29 @@ export function HomeScreen({ onAsk }: HomeScreenProps) {
           </section>
 
           <section className="space-y-5">
-            <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground/70">
+            <h2 className="text-lg font-bold tracking-tight text-foreground">
               Try a question
-            </p>
+            </h2>
             <div className="grid gap-3 sm:grid-cols-2">
               {exampleQuestions.map((question) => (
                 <ExampleQuestionCard key={question} question={question} onSelect={onAsk} />
               ))}
             </div>
           </section>
-
-          <TrustIndicatorRow />
         </main>
       </div>
+
+      <section
+        className="border-t border-border/40"
+        style={{
+          background:
+            'linear-gradient(180deg, rgba(12, 74, 110, 0.03) 0%, rgba(245, 245, 244, 0.8) 100%)',
+        }}
+      >
+        <div className="mx-auto max-w-3xl px-6 py-14 sm:py-20">
+          <TrustIndicatorRow />
+        </div>
+      </section>
     </div>
   )
 }
