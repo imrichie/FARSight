@@ -27,7 +27,7 @@
       ]
     },
     "answer_correctness": {
-      "passed": 28,
+      "passed": 29,
       "total": 42,
       "accepted_failures": [
         {
@@ -39,11 +39,6 @@
           "id": "G-02",
           "category": "single_excerpt_list_completeness",
           "reason": "Transponder requirements are spread across several conditions; v1 may answer from the strongest excerpt without listing every condition."
-        },
-        {
-          "id": "G-08",
-          "category": "single_excerpt_list_completeness",
-          "reason": "Supplemental oxygen requirements have multiple altitude tiers; current v1 answers can be correct but non-exhaustive."
         },
         {
           "id": "G-10",

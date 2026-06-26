@@ -46,7 +46,7 @@ The current accepted baseline is:
 |---|---:|
 | Retrieval hit rate | 42/42 |
 | Citation accuracy | 40/42 |
-| Answer correctness | 28/42 |
+| Answer correctness | 29/42 |
 | Correct refusal rate | 8/8 |
 
 Known accepted limitations are documented in the baseline itself. The important
