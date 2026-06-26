@@ -57,20 +57,11 @@ export function HomeScreen({ onAsk }: HomeScreenProps) {
               ))}
             </div>
           </section>
+          <div className="border-t border-border/50 pt-14">
+            <TrustIndicatorRow />
+          </div>
         </main>
       </div>
-
-      <section
-        className="border-t border-border/40"
-        style={{
-          background:
-            'linear-gradient(180deg, rgba(12, 74, 110, 0.03) 0%, rgba(245, 245, 244, 0.8) 100%)',
-        }}
-      >
-        <div className="mx-auto max-w-3xl px-6 py-14 sm:py-20">
-          <TrustIndicatorRow />
-        </div>
-      </section>
     </div>
   )
 }
