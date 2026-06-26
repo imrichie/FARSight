@@ -71,8 +71,14 @@ jobs:
         if: ${{ github.event_name == 'pull_request' }}
         run: |
           git fetch origin "${{ github.base_ref }}" --depth=1
-          git show "origin/${{ github.base_ref }}:evaluation/eval_baseline.json" \
-            > evaluation/eval_baseline.base.json
+          if git show "origin/${{ github.base_ref }}:evaluation/eval_baseline.json" \
+            > evaluation/eval_baseline.base.json 2>/dev/null
+          then
+            echo "Using eval baseline from origin/${{ github.base_ref }}."
+          else
+            echo "::notice::Base branch has no eval baseline yet; using this PR's baseline for the initial gate bootstrap."
+            cp evaluation/eval_baseline.json evaluation/eval_baseline.base.json
+          fi
 
       - name: Use current baseline for manual run
         if: ${{ github.event_name == 'workflow_dispatch' }}
