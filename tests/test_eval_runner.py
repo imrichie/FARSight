@@ -321,6 +321,47 @@ def test_model_judge_recheck_keeps_confirmed_failure(monkeypatch):
     assert len(client.calls) == 2
 
 
+def test_model_judge_evidence_check_accepts_supported_numeric_fact(monkeypatch):
+    client = _FakeChatClient(
+        [
+            {
+                "answer_is_correct": False,
+                "missing_key_facts": ["24 hours after decompression dives"],
+                "reason": "decompression wait is missing",
+            },
+            {
+                "answer_is_correct": False,
+                "missing_key_facts": ["24 hours after decompression dives"],
+                "reason": "not stated as a standalone rule",
+            },
+        ]
+    )
+    monkeypatch.setattr(eval_runner, "build_chat_client", lambda: client)
+    result = {
+        **_query(answer_expectation_type="list"),
+        "expected_key_facts": [
+            "24 hours after decompression dives",
+        ],
+        "answer": {
+            **_answer(),
+            "plain_language_summary": (
+                "Wait 24 hours if the dive required a controlled ascent."
+            ),
+            "verbatim_excerpt": (
+                "The recommended wait time is at least 24 hours after diving "
+                "that required a controlled ascent (i.e., decompression stop diving)."
+            ),
+        },
+    }
+
+    judgment = judge_answer_correctness(result)
+
+    assert judgment["answer_is_correct"] is True
+    assert judgment["missing_key_facts"] == []
+    assert judgment["answer_judge_rechecked"] is True
+    assert judgment["answer_judge_evidence_checked"] is True
+
+
 def test_answer_correctness_caches_answer_judge_verdict():
     payload = {
         "results": [

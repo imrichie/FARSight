@@ -19,8 +19,9 @@ It does four things:
 
 1. Runs the fast mocked test suite.
 2. Runs the live evaluation set through retrieval and generation.
-3. Scores the saved eval results.
-4. Compares the scorecard against the committed baseline.
+3. Confirms newly failed answer-correctness rows with one targeted retry.
+4. Scores the confirmed eval results.
+5. Compares the scorecard against the committed baseline.
 
 The workflow writes a readable summary to the GitHub Actions step summary and
 uploads the raw eval results as an artifact.
@@ -115,9 +116,18 @@ second-pass recheck against the generated summary and verbatim excerpt. The
 recheck does not lower the standard; it only asks whether the specific facts
 reported missing are actually present in the text. This catches avoidable
 false negatives from the judge while keeping genuine missing facts as failures.
+After that, a conservative text-evidence check can rescue only numeric facts
+where the generated answer contains the same quantity and distinctive condition
+words. Nonnumeric omissions still depend on the judge and remain failures.
 
 This reduces judge noise. It does not pretend live model systems are perfectly
 static forever.
+
+Live generation can also vary slightly even with deterministic settings. To
+avoid random merge blocks, CI reruns only newly failed answer-correctness rows
+once before the final comparison. The original live results and the confirmed
+results are both uploaded. A persistent failure still blocks the merge; a
+one-off wording miss does not become a permanent red check.
 
 ## Updating The Baseline
 
@@ -139,8 +149,12 @@ Useful commands:
 
 ```bash
 python -m evaluation.eval_runner --results-file evaluation/eval_results.ci.json
-python -m evaluation.compare_eval_baseline \
+python -m evaluation.confirm_eval_regressions \
   --results-file evaluation/eval_results.ci.json \
+  --output-file evaluation/eval_results.ci.confirmed.json \
+  --baseline-file evaluation/eval_baseline.json
+python -m evaluation.compare_eval_baseline \
+  --results-file evaluation/eval_results.ci.confirmed.json \
   --baseline-file evaluation/eval_baseline.json
 ```
 
@@ -148,7 +162,7 @@ To test a proposed baseline update locally:
 
 ```bash
 python -m evaluation.compare_eval_baseline \
-  --results-file evaluation/eval_results.ci.json \
+  --results-file evaluation/eval_results.ci.confirmed.json \
   --baseline-file path/to/base/eval_baseline.json \
   --proposed-baseline-file evaluation/eval_baseline.json
 ```

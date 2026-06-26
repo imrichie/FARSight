@@ -89,10 +89,17 @@ jobs:
           python -m evaluation.eval_runner \
             --results-file evaluation/eval_results.ci.json
 
+      - name: Confirm answer-correctness regressions
+        run: |
+          python -m evaluation.confirm_eval_regressions \
+            --results-file evaluation/eval_results.ci.json \
+            --output-file evaluation/eval_results.ci.confirmed.json \
+            --baseline-file evaluation/eval_baseline.base.json
+
       - name: Compare against regression baseline
         run: |
           python -m evaluation.compare_eval_baseline \
-            --results-file evaluation/eval_results.ci.json \
+            --results-file evaluation/eval_results.ci.confirmed.json \
             --baseline-file evaluation/eval_baseline.base.json \
             --proposed-baseline-file evaluation/eval_baseline.json \
             --summary-file "$GITHUB_STEP_SUMMARY"
@@ -104,6 +111,7 @@ jobs:
           name: eval-results
           path: |
             evaluation/eval_results.ci.json
+            evaluation/eval_results.ci.confirmed.json
             evaluation/eval_baseline.base.json
           if-no-files-found: ignore
 

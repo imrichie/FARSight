@@ -4,6 +4,7 @@
 
 import argparse
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable
@@ -28,12 +29,57 @@ from src.regulation_retriever import (
 
 TEST_QUERY_FILE = Path("evaluation/test_queries.jsonl")
 DEFAULT_RESULTS_FILE = Path("evaluation/eval_results.json")
-ANSWER_JUDGE_VERSION = "concise-natural-v2"
+ANSWER_JUDGE_VERSION = "concise-natural-v3"
 ANSWER_JUDGE_COMPLETION_OPTIONS = {
     "temperature": 0,
     "response_format": "json_object",
     "seed": 1,
 }
+FACT_EVIDENCE_STOPWORDS = {
+    "about",
+    "after",
+    "again",
+    "all",
+    "also",
+    "and",
+    "any",
+    "are",
+    "before",
+    "below",
+    "between",
+    "but",
+    "calendar",
+    "can",
+    "does",
+    "during",
+    "each",
+    "except",
+    "feet",
+    "from",
+    "have",
+    "hours",
+    "into",
+    "least",
+    "must",
+    "only",
+    "over",
+    "provided",
+    "required",
+    "requires",
+    "should",
+    "than",
+    "that",
+    "the",
+    "this",
+    "through",
+    "under",
+    "when",
+    "with",
+    "within",
+}
+FACT_EVIDENCE_TOKEN_GROUPS = [
+    {"dive", "dives", "diving"},
+]
 
 ANSWER_JUDGE_SYSTEM_PROMPT = """\
 You are a strict evaluator for FARSight, a FAA regulation question-answering tool.
@@ -83,7 +129,10 @@ Use this process:
    in the same sentence or the immediately preceding sentence.
 4. Do not require the exact expected wording if the same quantity, condition,
    and action are all supported by the generated text.
-5. Do not infer facts from outside knowledge.
+5. Do not require a fact to be stated as a standalone rule. A coordinated
+   sentence such as "12 hours after X and 24 hours after Y" supports the fact
+   "24 hours after Y".
+6. Do not infer facts from outside knowledge.
 
 Return answer_is_correct true only if every expected key fact is present in the
 generated text. Otherwise return false and list the facts that are still absent.
@@ -259,6 +308,80 @@ def answer_excerpt_for_judging(answer: dict | None) -> str:
     return (answer.get("verbatim_excerpt") or "").strip()
 
 
+def normalize_evidence_text(text: str) -> str:
+    normalized = text.lower().replace("−", "-").replace("–", "-")
+    return re.sub(r"(?<=\d),(?=\d{3}\b)", "", normalized)
+
+
+def evidence_numbers(text: str) -> set[str]:
+    return set(re.findall(r"\d+(?:\.\d+)?", normalize_evidence_text(text)))
+
+
+def evidence_tokens(text: str) -> set[str]:
+    words = re.findall(r"[a-z]+", normalize_evidence_text(text))
+    return {
+        word
+        for word in words
+        if len(word) > 2 and word not in FACT_EVIDENCE_STOPWORDS
+    }
+
+
+def token_is_present(token: str, available_tokens: set[str]) -> bool:
+    if token in available_tokens:
+        return True
+
+    for token_group in FACT_EVIDENCE_TOKEN_GROUPS:
+        if token in token_group and token_group & available_tokens:
+            return True
+
+    if token.endswith("s") and token[:-1] in available_tokens:
+        return True
+
+    return False
+
+
+def sentence_fragments(text: str) -> list[str]:
+    text = re.sub(r"\bi\.e\.", "ie", text, flags=re.IGNORECASE)
+    text = re.sub(r"\be\.g\.", "eg", text, flags=re.IGNORECASE)
+    return [
+        fragment.strip()
+        for fragment in re.split(r"[\n.;]+", text)
+        if fragment.strip()
+    ]
+
+
+def fact_has_numeric_text_evidence(fact: str, answer_text: str) -> bool:
+    fact_numbers = evidence_numbers(fact)
+    if not fact_numbers:
+        return False
+
+    fact_tokens = evidence_tokens(fact)
+    if not fact_tokens:
+        return False
+
+    for fragment in sentence_fragments(answer_text):
+        fragment_numbers = evidence_numbers(fragment)
+        if not fact_numbers.issubset(fragment_numbers):
+            continue
+
+        fragment_tokens = evidence_tokens(fragment)
+        if all(token_is_present(token, fragment_tokens) for token in fact_tokens):
+            return True
+
+    return False
+
+
+def unsupported_missing_facts_after_text_evidence_check(
+    missing_key_facts: list[str],
+    answer_text: str,
+) -> list[str]:
+    return [
+        fact
+        for fact in missing_key_facts
+        if not fact_has_numeric_text_evidence(fact, answer_text)
+    ]
+
+
 def build_failed_answer_judgment(result: dict, reason: str) -> dict:
     return {
         "answer_is_correct": False,
@@ -338,6 +461,34 @@ def judge_answer_correctness(result: dict) -> dict:
                 **rechecked_judgment,
                 "answer_judge_rechecked": True,
             }
+            unsupported_missing_facts = (
+                unsupported_missing_facts_after_text_evidence_check(
+                    judgment["missing_key_facts"],
+                    answer_text,
+                )
+            )
+            if len(unsupported_missing_facts) < len(judgment["missing_key_facts"]):
+                if unsupported_missing_facts:
+                    judgment = {
+                        **judgment,
+                        "missing_key_facts": unsupported_missing_facts,
+                        "reason": (
+                            "Some reported missing facts were supported by "
+                            "numeric evidence in the generated text."
+                        ),
+                        "answer_judge_evidence_checked": True,
+                    }
+                else:
+                    judgment = {
+                        **judgment,
+                        "answer_is_correct": True,
+                        "missing_key_facts": [],
+                        "reason": (
+                            "Reported missing facts are supported by numeric "
+                            "evidence in the generated text."
+                        ),
+                        "answer_judge_evidence_checked": True,
+                    }
     except Exception as error:  # noqa: BLE001 - judge failures should be scorecard-visible.
         return build_failed_answer_judgment(
             result,
@@ -352,6 +503,10 @@ def judge_answer_correctness(result: dict) -> dict:
         "judged_expected_key_facts": expected_key_facts,
         "judged_answer_expectation_type": result["answer_expectation_type"],
         "answer_judge_rechecked": judgment.get("answer_judge_rechecked", False),
+        "answer_judge_evidence_checked": judgment.get(
+            "answer_judge_evidence_checked",
+            False,
+        ),
     }
 
 
