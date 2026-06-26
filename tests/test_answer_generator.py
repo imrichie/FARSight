@@ -98,6 +98,28 @@ def _not_answerable_gate_response():
     )
 
 
+def _source_selection_response(chosen_chunk_number=1):
+    return _model_response(
+        {
+            "answer_found": True,
+            "chosen_chunk_number": chosen_chunk_number,
+            "question_focus": "directly responsive source",
+            "reason": "this chunk directly answers the question",
+        }
+    )
+
+
+def _no_source_selection_response():
+    return _model_response(
+        {
+            "answer_found": False,
+            "chosen_chunk_number": None,
+            "question_focus": "unsupported question",
+            "reason": "none of the chunks directly answer the question",
+        }
+    )
+
+
 def _fallback_was_returned(cited_answer: dict) -> bool:
     return (
         cited_answer["answer_was_found"] is False
@@ -110,6 +132,7 @@ def _fallback_was_returned(cited_answer: dict) -> bool:
 def test_valid_question_with_relevant_chunk_returns_cited_answer():
     chat_client = MagicMock()
     chat_client.complete.side_effect = [
+        _source_selection_response(),
         _model_response(
             {
                 "answer_found": True,
@@ -145,14 +168,17 @@ def test_empty_chunks_return_fallback_message():
 
 def test_model_answer_found_false_returns_fallback_message():
     chat_client = MagicMock()
-    chat_client.complete.return_value = _model_response(
-        {
-            "answer_found": False,
-            "chosen_chunk_number": None,
-            "plain_language_summary": "",
-            "verbatim_excerpt": "",
-        }
-    )
+    chat_client.complete.side_effect = [
+        _source_selection_response(),
+        _model_response(
+            {
+                "answer_found": False,
+                "chosen_chunk_number": None,
+                "plain_language_summary": "",
+                "verbatim_excerpt": "",
+            }
+        ),
+    ]
 
     with patch("src.answer_generator.build_chat_client", return_value=chat_client):
         cited_answer = generate_cited_answer(
@@ -165,14 +191,17 @@ def test_model_answer_found_false_returns_fallback_message():
 
 def test_model_invalid_chunk_number_returns_fallback_message():
     chat_client = MagicMock()
-    chat_client.complete.return_value = _model_response(
-        {
-            "answer_found": True,
-            "chosen_chunk_number": 2,
-            "plain_language_summary": "A pilot must wait 8 hours after drinking.",
-            "verbatim_excerpt": "within 8 hours after the consumption of any alcoholic beverage.",
-        }
-    )
+    chat_client.complete.side_effect = [
+        _source_selection_response(),
+        _model_response(
+            {
+                "answer_found": True,
+                "chosen_chunk_number": 2,
+                "plain_language_summary": "A pilot must wait 8 hours after drinking.",
+                "verbatim_excerpt": "within 8 hours after the consumption of any alcoholic beverage.",
+            }
+        ),
+    ]
 
     with patch("src.answer_generator.build_chat_client", return_value=chat_client):
         cited_answer = generate_cited_answer(
@@ -183,9 +212,27 @@ def test_model_invalid_chunk_number_returns_fallback_message():
     assert _fallback_was_returned(cited_answer)
 
 
+def test_malformed_generation_response_returns_fallback_message():
+    chat_client = MagicMock()
+    chat_client.complete.side_effect = [
+        _source_selection_response(),
+        _raw_model_response("not valid json"),
+    ]
+
+    with patch("src.answer_generator.build_chat_client", return_value=chat_client):
+        cited_answer = generate_cited_answer(
+            "How long after drinking can I fly?",
+            [_retrieved_chunk()],
+        )
+
+    assert chat_client.complete.call_count == 2
+    assert _fallback_was_returned(cited_answer)
+
+
 def test_unverified_excerpt_retries_once_and_returns_cited_answer_on_success():
     chat_client = MagicMock()
     chat_client.complete.side_effect = [
+        _source_selection_response(),
         _model_response(
             {
                 "answer_found": True,
@@ -211,8 +258,8 @@ def test_unverified_excerpt_retries_once_and_returns_cited_answer_on_success():
             [_retrieved_chunk()],
         )
 
-    second_attempt_messages = chat_client.complete.call_args_list[1].kwargs["messages"]
-    assert chat_client.complete.call_count == 3
+    second_attempt_messages = chat_client.complete.call_args_list[2].kwargs["messages"]
+    assert chat_client.complete.call_count == 4
     assert "not found in the chosen chunk" in second_attempt_messages[-1].content
     assert cited_answer["answer_was_found"] is True
     assert cited_answer["citation"]["section_number"] == "91.17"
@@ -221,6 +268,7 @@ def test_unverified_excerpt_retries_once_and_returns_cited_answer_on_success():
 def test_unverified_excerpt_twice_falls_back_after_retry():
     chat_client = MagicMock()
     chat_client.complete.side_effect = [
+        _source_selection_response(),
         _model_response(
             {
                 "answer_found": True,
@@ -245,13 +293,14 @@ def test_unverified_excerpt_twice_falls_back_after_retry():
             [_retrieved_chunk()],
         )
 
-    assert chat_client.complete.call_count == 2
+    assert chat_client.complete.call_count == 3
     assert _fallback_was_returned(cited_answer)
 
 
 def test_not_answerable_gate_vetoes_verified_answer():
     chat_client = MagicMock()
     chat_client.complete.side_effect = [
+        _source_selection_response(),
         _model_response(
             {
                 "answer_found": True,
@@ -275,13 +324,14 @@ def test_not_answerable_gate_vetoes_verified_answer():
             [_nearby_uas_registration_chunk()],
         )
 
-    assert chat_client.complete.call_count == 2
+    assert chat_client.complete.call_count == 3
     assert _fallback_was_returned(cited_answer)
 
 
 def test_malformed_gate_response_allows_verified_answer():
     chat_client = MagicMock()
     chat_client.complete.side_effect = [
+        _source_selection_response(),
         _model_response(
             {
                 "answer_found": True,
@@ -306,10 +356,11 @@ def test_malformed_gate_response_allows_verified_answer():
 def test_answerability_gate_allows_valid_registration_certificate_answer():
     chat_client = MagicMock()
     chat_client.complete.side_effect = [
+        _source_selection_response(chosen_chunk_number=2),
         _model_response(
             {
                 "answer_found": True,
-                "chosen_chunk_number": 2,
+                "chosen_chunk_number": 1,
                 "plain_language_summary": (
                     "The aircraft must carry an airworthiness certificate and "
                     "registration certificate."
@@ -329,9 +380,26 @@ def test_answerability_gate_allows_valid_registration_certificate_answer():
             [_nearby_uas_registration_chunk(), _registration_certificate_chunk()],
         )
 
-    generation_messages = chat_client.complete.call_args_list[0].kwargs["messages"]
+    selection_messages = chat_client.complete.call_args_list[0].kwargs["messages"]
+    selection_prompt = selection_messages[-1].content
+    generation_messages = chat_client.complete.call_args_list[1].kwargs["messages"]
     generation_prompt = generation_messages[-1].content
-    assert "DroneZone" in generation_prompt
+    assert "DroneZone" in selection_prompt
     assert "§ 91.203" in generation_prompt
+    assert "DroneZone" not in generation_prompt
     assert cited_answer["answer_was_found"] is True
     assert cited_answer["citation"]["section_number"] == "91.203"
+
+
+def test_no_direct_source_selection_returns_fallback_message():
+    chat_client = MagicMock()
+    chat_client.complete.return_value = _no_source_selection_response()
+
+    with patch("src.answer_generator.build_chat_client", return_value=chat_client):
+        cited_answer = generate_cited_answer(
+            "How do I register my aircraft with the FAA?",
+            [_nearby_uas_registration_chunk()],
+        )
+
+    assert chat_client.complete.call_count == 1
+    assert _fallback_was_returned(cited_answer)

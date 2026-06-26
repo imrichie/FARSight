@@ -21,6 +21,11 @@ FALLBACK_MESSAGE = (
     "I could not find a confident answer to that question in the FAR/AIM. "
     "Please consult the official FAA documentation or a certified flight instructor."
 )
+JSON_COMPLETION_OPTIONS = {
+    "temperature": 0,
+    "response_format": "json_object",
+    "seed": 1,
+}
 
 GROUNDED_ANSWER_SYSTEM_PROMPT = """\
 You are the answer engine for FARSight, a question-answering tool for pilots
@@ -51,6 +56,41 @@ Respond with JSON only, no other text, in exactly this shape:
   "chosen_chunk_number": <number of the chunk the excerpt comes from, or null>,
   "plain_language_summary": "<summary, or empty string if answer_found is false>",
   "verbatim_excerpt": "<exact quote from the chunk, or empty string if answer_found is false>"
+}
+"""
+
+SOURCE_SELECTION_SYSTEM_PROMPT = """\
+You choose the best source chunk for a grounded FAR/AIM answer.
+
+First identify what kind of thing the question asks for: a physical procedure,
+communication procedure, equipment requirement, certificate duration,
+inspection requirement, limitation, or definition. Then select the single chunk
+whose text most directly answers that kind of question.
+
+Do not choose a chunk merely because it shares the same setting or vocabulary.
+For example, if the question asks how to physically enter a traffic pattern,
+prefer a traffic-pattern procedure chunk over a CTAF/self-announcement
+communication chunk.
+
+When the question asks about a legal requirement, prohibition, certificate
+privilege, inspection, or operating rule, prefer directly responsive 14 CFR
+text over AIM advisory text. Use AIM when the question asks about AIM
+procedures, operational guidance, airspace explanations, or when no CFR chunk
+directly answers.
+
+If the exact answer appears in a lower-ranked chunk, choose the lower-ranked
+chunk. If no chunk contains the answer, return answer_found false.
+
+Prefer chunks that contain the requested value, row, list item, definition, or
+procedure text. Do not choose a chunk that merely names a table or section if
+another retrieved chunk includes the table contents or specific answer text.
+
+Respond with JSON only, no other text, in exactly this shape:
+{
+  "answer_found": true or false,
+  "chosen_chunk_number": <number of the chunk that most directly answers, or null>,
+  "question_focus": "<short phrase describing what the question asks for>",
+  "reason": "<one short sentence>"
 }
 """
 
@@ -125,6 +165,41 @@ def build_fallback_answer() -> dict:
     }
 
 
+def select_source_chunk(
+    chat_client: ChatCompletionsClient,
+    user_question: str,
+    retrieved_regulation_chunks: list[dict],
+) -> dict | None:
+    source_selection_response = chat_client.complete(
+        messages=[
+            SystemMessage(content=SOURCE_SELECTION_SYSTEM_PROMPT),
+            UserMessage(
+                content=(
+                    f"Pilot's question: {user_question}\n\n"
+                    f"Retrieved regulation chunks:\n\n"
+                    f"{format_chunks_for_prompt(retrieved_regulation_chunks)}"
+                )
+            ),
+        ],
+        **JSON_COMPLETION_OPTIONS,
+    )
+    source_selection_text = source_selection_response.choices[0].message.content
+    try:
+        source_selection = parse_model_json_response(source_selection_text)
+    except json.JSONDecodeError:
+        return None
+
+    chosen_chunk_number = source_selection.get("chosen_chunk_number")
+    chunk_number_is_valid = (
+        isinstance(chosen_chunk_number, int)
+        and 1 <= chosen_chunk_number <= len(retrieved_regulation_chunks)
+    )
+    if not source_selection.get("answer_found") or not chunk_number_is_valid:
+        return None
+
+    return retrieved_regulation_chunks[chosen_chunk_number - 1]
+
+
 def check_answerability(
     chat_client: ChatCompletionsClient,
     user_question: str,
@@ -147,7 +222,8 @@ def check_answerability(
         messages=[
             SystemMessage(content=ANSWERABILITY_GATE_SYSTEM_PROMPT),
             UserMessage(content=json.dumps(candidate_answer, indent=2)),
-        ]
+        ],
+        **JSON_COMPLETION_OPTIONS,
     )
     gate_reply_text = gate_response.choices[0].message.content
     try:
@@ -187,13 +263,20 @@ def generate_cited_answer(
         return build_fallback_answer()
 
     chat_client = build_chat_client()
+    selected_source_chunk = select_source_chunk(
+        chat_client, user_question, retrieved_regulation_chunks
+    )
+    if selected_source_chunk is None:
+        return build_fallback_answer()
+
+    source_chunks_for_generation = [selected_source_chunk]
     conversation_messages = [
         SystemMessage(content=GROUNDED_ANSWER_SYSTEM_PROMPT),
         UserMessage(
             content=(
                 f"Pilot's question: {user_question}\n\n"
                 f"Retrieved regulation chunks:\n\n"
-                f"{format_chunks_for_prompt(retrieved_regulation_chunks)}"
+                f"{format_chunks_for_prompt(source_chunks_for_generation)}"
             )
         ),
     ]
@@ -202,19 +285,25 @@ def generate_cited_answer(
     # one corrective retry, then the honest uncertainty state. An
     # unverified quote is never shown to a user as regulation text.
     for generation_attempt in range(2):
-        chat_response = chat_client.complete(messages=conversation_messages)
+        chat_response = chat_client.complete(
+            messages=conversation_messages,
+            **JSON_COMPLETION_OPTIONS,
+        )
         model_reply_text = chat_response.choices[0].message.content
-        model_reply = parse_model_json_response(model_reply_text)
+        try:
+            model_reply = parse_model_json_response(model_reply_text)
+        except json.JSONDecodeError:
+            return build_fallback_answer()
 
         chosen_chunk_number = model_reply.get("chosen_chunk_number")
         chunk_number_is_valid = (
             isinstance(chosen_chunk_number, int)
-            and 1 <= chosen_chunk_number <= len(retrieved_regulation_chunks)
+            and 1 <= chosen_chunk_number <= len(source_chunks_for_generation)
         )
         if not model_reply.get("answer_found") or not chunk_number_is_valid:
             return build_fallback_answer()
 
-        chosen_chunk = retrieved_regulation_chunks[chosen_chunk_number - 1]
+        chosen_chunk = source_chunks_for_generation[chosen_chunk_number - 1]
         verbatim_excerpt = model_reply.get("verbatim_excerpt", "").strip()
 
         # Trust but verify: the excerpt must appear in the chunk as one
