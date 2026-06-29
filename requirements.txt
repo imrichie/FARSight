@@ -1,5 +1,6 @@
-# Frontend
-streamlit
+# API server
+fastapi
+uvicorn[standard]
 
 # Azure AI Search — indexing and retrieval
 azure-search-documents
