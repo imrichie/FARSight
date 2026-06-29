@@ -29,6 +29,7 @@ data/raw/*.pdf
 
 # Internal reference docs — not part of the deployable project
 data/
+!frontend/src/data/
 
 # Pytest / coverage
 .pytest_cache/

@@ -25,4 +25,5 @@ export type ConversationEntry = {
   question: string
   response: MockFarsightResponse | null
   isLoading: boolean
+  error: string | null
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { queryMockFarsight } from './data/mockResponses'
+import { askFarsight, ApiError } from './data/api'
 import { ConversationScreen } from './screens/ConversationScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import type { ConversationEntry } from './types/farsight'
@@ -14,17 +14,37 @@ export function App() {
       question,
       response: null,
       isLoading: true,
+      error: null,
     }
 
     setEntries((previous) => [...previous, newEntry])
 
-    const mockResponse = await queryMockFarsight(question)
+    try {
+      const response = await askFarsight(question)
+      setEntries((previous) =>
+        previous.map((entry) =>
+          entry.id === id ? { ...entry, response, isLoading: false } : entry,
+        ),
+      )
+    } catch (caught) {
+      const message =
+        caught instanceof ApiError
+          ? caught.message
+          : 'Having trouble reaching the regulations right now. Please try again in a moment.'
+      setEntries((previous) =>
+        previous.map((entry) =>
+          entry.id === id ? { ...entry, error: message, isLoading: false } : entry,
+        ),
+      )
+    }
+  }
 
-    setEntries((previous) =>
-      previous.map((entry) =>
-        entry.id === id ? { ...entry, response: mockResponse, isLoading: false } : entry,
-      ),
-    )
+  function retryQuestion(entryId: string) {
+    const entry = entries.find((e) => e.id === entryId)
+    if (!entry) return
+
+    setEntries((previous) => previous.filter((e) => e.id !== entryId))
+    askQuestion(entry.question)
   }
 
   function returnHome() {
@@ -39,6 +59,7 @@ export function App() {
     <ConversationScreen
       entries={entries}
       onAsk={askQuestion}
+      onRetry={retryQuestion}
       onHome={returnHome}
     />
   )

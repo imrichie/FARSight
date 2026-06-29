@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { AnswerCard } from '../components/AnswerCard'
+import { ErrorState } from '../components/ErrorState'
 import { LoadingDots } from '../components/LoadingDots'
 import { NavigationHeader } from '../components/NavigationHeader'
 import { QuestionDisplay } from '../components/QuestionDisplay'
@@ -10,12 +11,14 @@ import type { ConversationEntry } from '../types/farsight'
 type ConversationScreenProps = {
   entries: ConversationEntry[]
   onAsk: (question: string) => void
+  onRetry: (entryId: string) => void
   onHome: () => void
 }
 
 export function ConversationScreen({
   entries,
   onAsk,
+  onRetry,
   onHome,
 }: ConversationScreenProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -35,7 +38,11 @@ export function ConversationScreen({
 
               {entry.isLoading ? <LoadingDots /> : null}
 
-              {!entry.isLoading && entry.response?.found ? (
+              {!entry.isLoading && entry.error ? (
+                <ErrorState message={entry.error} onRetry={() => onRetry(entry.id)} />
+              ) : null}
+
+              {!entry.isLoading && !entry.error && entry.response?.found ? (
                 <AnswerCard
                   answer={entry.response.answer}
                   excerpt={entry.response.excerpt}
@@ -43,7 +50,7 @@ export function ConversationScreen({
                 />
               ) : null}
 
-              {!entry.isLoading && entry.response && !entry.response.found ? (
+              {!entry.isLoading && !entry.error && entry.response && !entry.response.found ? (
                 <UncertainState message={entry.response.answer} />
               ) : null}
             </div>
