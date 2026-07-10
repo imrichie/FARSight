@@ -46,8 +46,12 @@ export class ApiError extends Error {
   }
 }
 
+// In local dev this is unset, so requests stay relative and go through the
+// Vite proxy. In production the build sets it to the Container Apps URL.
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
+
 export async function askFarsight(question: string): Promise<MockFarsightResponse> {
-  const response = await fetch('/api/ask', {
+  const response = await fetch(`${API_BASE_URL}/api/ask`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question }),
