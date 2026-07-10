@@ -38,3 +38,6 @@ htmlcov/
 
 # Generated evaluation output
 evaluation/eval_results*.json
+
+# Compiled ARM templates from `az bicep build`
+infrastructure/*.json
