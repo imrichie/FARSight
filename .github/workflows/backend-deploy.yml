@@ -50,11 +50,12 @@ jobs:
       # This workflow ships app images onto infrastructure that already
       # exists — it never runs `az deployment group create`. Infra changes
       # (new resources, port changes, secrets schema) stay on the manual
-      # Bicep path Richie runs by hand; CI only gets permission to update
-      # the one Container App resource's image (Container Apps Contributor,
-      # scoped to ca-farsight-api-dev), never to write ARM deployment
-      # objects at the resource-group scope. That boundary is deliberate,
-      # not an oversight — see DECISIONS.md.
+      # Bicep path run by hand; CI only gets permission to update the one
+      # Container App resource's image (Container Apps Contributor, scoped
+      # to ca-farsight-api-dev), never to write ARM deployment objects at
+      # the resource-group scope. That boundary is deliberate: it keeps an
+      # unattended CI identity from ever being able to create or
+      # reconfigure infrastructure on its own.
       #
       # Its own exit code still isn't fully trustworthy for scale-to-zero
       # Container Apps: a slow-but-fine cold start can outlast this
