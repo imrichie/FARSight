@@ -27,11 +27,34 @@ param containerAppName string = 'ca-farsight-api-dev'
 @description('Name of the container inside the Container App revision.')
 param containerName string = 'farsight-api'
 
-@description('Public placeholder image used until the real FastAPI image is built and deployed in #26.')
-param placeholderImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+@description('Container image for the FastAPI backend. GitHub Actions passes the commit-SHA-tagged image from Azure Container Registry on every backend deploy.')
+param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 
-@description('Container port exposed by the placeholder image. #26 should set this to 8000 when deploying the real FastAPI image.')
-param targetPort int = 80
+@description('Container port exposed by the FastAPI backend.')
+param targetPort int = 8000
+
+@description('Azure AI Search endpoint URL.')
+param searchEndpoint string = ''
+
+@description('Azure AI Search index name.')
+param searchIndexName string = ''
+
+@secure()
+@description('Azure AI Search admin key.')
+param searchAdminKey string = ''
+
+@description('Azure OpenAI endpoint URL.')
+param openAiEndpoint string = ''
+
+@secure()
+@description('Azure OpenAI API key.')
+param openAiApiKey string = ''
+
+@description('Azure OpenAI chat completion deployment name.')
+param openAiChatDeployment string = ''
+
+@description('Azure OpenAI embedding deployment name.')
+param openAiEmbeddingDeployment string = ''
 
 @description('CPU cores for the backend container. Container Apps accepts fractional CPU values.')
 @allowed([
@@ -140,16 +163,56 @@ resource containerApp 'Microsoft.App/containerApps@2026-01-01' = {
           identity: acrPullIdentity.id
         }
       ]
+      secrets: [
+        {
+          name: 'search-admin-key'
+          value: searchAdminKey
+        }
+        {
+          name: 'openai-api-key'
+          value: openAiApiKey
+        }
+      ]
     }
     template: {
       containers: [
         {
           name: containerName
-          image: placeholderImage
+          image: containerImage
           resources: {
             cpu: json(containerCpu)
             memory: containerMemory
           }
+          env: [
+            {
+              name: 'AZURE_SEARCH_ENDPOINT'
+              value: searchEndpoint
+            }
+            {
+              name: 'AZURE_SEARCH_INDEX_NAME'
+              value: searchIndexName
+            }
+            {
+              name: 'AZURE_SEARCH_ADMIN_KEY'
+              secretRef: 'search-admin-key'
+            }
+            {
+              name: 'AZURE_OPENAI_ENDPOINT'
+              value: openAiEndpoint
+            }
+            {
+              name: 'AZURE_OPENAI_API_KEY'
+              secretRef: 'openai-api-key'
+            }
+            {
+              name: 'AZURE_OPENAI_CHAT_DEPLOYMENT'
+              value: openAiChatDeployment
+            }
+            {
+              name: 'AZURE_OPENAI_EMBEDDING_DEPLOYMENT'
+              value: openAiEmbeddingDeployment
+            }
+          ]
         }
       ]
       scale: {

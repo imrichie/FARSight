@@ -1,10 +1,27 @@
+import os
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 
 from src.answer_generator import generate_cited_answer
 from src.regulation_retriever import retrieve_relevant_regulation_chunks
 
 app = FastAPI(title="FARSight API")
+
+# The Vercel frontend origin is set here once it exists; empty by default
+# so no cross-origin requests are allowed until explicitly configured.
+allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_methods=["POST"],
+    allow_headers=["Content-Type"],
+)
 
 
 class AskRequest(BaseModel):

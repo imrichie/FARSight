@@ -1,18 +1,117 @@
 name: Deploy Backend to Container Apps
 
-# Stub: registers this workflow name for workflow_dispatch so it can be
-# manually run against a feature branch's full definition via
-# `gh workflow run backend-deploy.yml --ref <branch>`, without going live
-# on every push to main yet. GitHub only allows dispatching a workflow
-# once it exists on the default branch, regardless of the ref executed.
-# The real push trigger, paths filter, and job steps land when the full
-# PR (#26) merges and replaces this file.
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - '.github/workflows/backend-deploy.yml'
   workflow_dispatch:
 
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: backend-deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RESOURCE_GROUP: rg-farsight-dev
+  REGISTRY_LOGIN_SERVER: acrfarsight2hdsc44etsuuc.azurecr.io
+  IMAGE_NAME: farsight-api
+
 jobs:
-  stub:
-    name: Placeholder — real logic lives on feature/backend-deploy until merged
+  deploy:
+    name: Build, push, and deploy FastAPI backend
     runs-on: ubuntu-latest
     steps:
-      - run: echo "This is a stub. Dispatch with --ref pointing at the branch carrying the full workflow."
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        run: az acr login --name ${{ env.REGISTRY_LOGIN_SERVER }}
+
+      - name: Build and push backend image
+        run: |
+          docker build -t "${{ env.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" .
+          docker push "${{ env.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+
+      # This workflow ships app images onto infrastructure that already
+      # exists — it never runs `az deployment group create`. Infra changes
+      # (new resources, port changes, secrets schema) stay on the manual
+      # Bicep path Richie runs by hand; CI only gets permission to update
+      # the one Container App resource's image (Container Apps Contributor,
+      # scoped to ca-farsight-api-dev), never to write ARM deployment
+      # objects at the resource-group scope. That boundary is deliberate,
+      # not an oversight — see DECISIONS.md.
+      #
+      # Its own exit code still isn't fully trustworthy for scale-to-zero
+      # Container Apps: a slow-but-fine cold start can outlast this
+      # command's synchronous wait. So this step is allowed to fail without
+      # stopping the job — the next step is the real acceptance check,
+      # polling actual revision health instead of trusting this exit status.
+      - name: Deploy new image to Container Apps
+        id: deploy
+        continue-on-error: true
+        run: |
+          az containerapp update \
+            --name ca-farsight-api-dev \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image "${{ env.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+
+      # The real acceptance criteria: not "did the deploy command exit 0,"
+      # but "is the revision running this exact image actually healthy."
+      # Bounded to 10 minutes — generous enough to cover a slow cold start
+      # like the one observed manually, finite so a genuinely broken deploy
+      # still fails the job instead of hanging CI indefinitely.
+      - name: Confirm revision reached Healthy
+        run: |
+          IMAGE="${{ env.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          echo "Polling ca-farsight-api-dev for a revision running: $IMAGE"
+
+          for attempt in $(seq 1 20); do
+            STATUS=$(az containerapp revision list \
+              --name ca-farsight-api-dev \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --query "[?properties.template.containers[0].image=='${IMAGE}'] | [0].{name:name, health:properties.healthState, state:properties.provisioningState}" \
+              -o json)
+
+            NAME=$(echo "$STATUS" | jq -r '.name // empty')
+            HEALTH=$(echo "$STATUS" | jq -r '.health // empty')
+            STATE=$(echo "$STATUS" | jq -r '.state // empty')
+
+            echo "Attempt $attempt/20: revision=${NAME:-<not found yet>} health=${HEALTH:-?} state=${STATE:-?}"
+
+            if [ "$HEALTH" = "Healthy" ] && [ "$STATE" = "Provisioned" ]; then
+              echo "Revision $NAME is healthy and provisioned."
+              exit 0
+            fi
+
+            sleep 30
+          done
+
+          echo "::error::No revision running $IMAGE reached Healthy/Provisioned within 10 minutes."
+          exit 1
+
+      # Confirms the app itself is serving, not just that the platform's
+      # own probe is satisfied.
+      - name: Smoke test deployed backend
+        run: |
+          BACKEND_URL=$(az containerapp show \
+            --name ca-farsight-api-dev \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+          echo "Backend URL: https://$BACKEND_URL"
+          curl --fail --silent --show-error --retry 5 --retry-delay 10 --retry-connrefused \
+            "https://$BACKEND_URL/openapi.json" > /dev/null
