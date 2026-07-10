@@ -89,3 +89,37 @@ the CLI's patience even when the deployment is otherwise fine. Treat the CLI's
 top-level exit code as a hint, not a verdict. Confirm real state with
 `az containerapp revision list` (and, if needed, `containerapp logs show`)
 before deciding a deployment actually failed.
+
+## Scope The CI Deploy Identity To Ship Images, Not Manage Infrastructure
+
+Problem: GitHub Actions needs to authenticate to Azure and deploy the backend
+on every push to `main`, but that identity shouldn't be able to do more than
+its job requires — and its job is narrower than it first looks.
+
+Considered:
+- A stored Azure service principal secret: works, but it's a long-lived
+  credential sitting in GitHub secrets that has to be rotated and can leak.
+- `az deployment group create` (full Bicep re-apply) on every backend push:
+  keeps one deploy path for everything, but requires granting the CI identity
+  `Microsoft.Resources/deployments/write` at the resource-group scope — the
+  same permission needed to create or reconfigure any resource in
+  `rg-farsight-dev`, not just update one container's image.
+
+Picked: OIDC federated identity (`azure/login@v2` with no client secret,
+trusted only for `repo:imrichie/FARSight:ref:refs/heads/main`), holding two
+narrow role grants — `AcrPush` on the registry and `Container Apps
+Contributor` scoped to just `ca-farsight-api-dev`, nothing at the resource
+group level. The CI deploy step uses `az containerapp update --image` instead
+of re-applying Bicep. Infra changes (new resources, port or secrets-schema
+changes) stay on the manual `az deployment group create` path run by hand,
+per the existing rule that infra deploys are never automated.
+
+Why: this was tested the hard way — an early version of the workflow ran
+`az deployment group create` from CI and failed with `AuthorizationFailed`,
+because the identity correctly didn't have resource-group-level deployment
+rights. Widening that grant would have let an unattended CI identity
+reconfigure or create infrastructure with no review step, exactly the
+category of action this project deliberately keeps human-in-the-loop.
+`containerapp update` only needs the single-resource grant already in place,
+so CI's blast radius is capped at "can replace the running image," never
+"can touch anything else in the resource group."
