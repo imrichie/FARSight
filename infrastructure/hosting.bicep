@@ -15,6 +15,9 @@ param containerRegistryName string = 'acrfarsight${uniqueString(resourceGroup().
 ])
 param containerRegistrySku string = 'Basic'
 
+@description('Name of the user-assigned managed identity used for ACR pull access.')
+param acrPullIdentityName string = 'id-farsight-acr-pull-dev'
+
 @description('Name of the Container Apps managed environment.')
 param containerAppsEnvironmentName string = 'cae-farsight-dev'
 
@@ -80,6 +83,24 @@ resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' =
   }
 }
 
+resource acrPullIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: acrPullIdentityName
+  location: location
+}
+
+resource acrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerRegistry.id, acrPullIdentity.id, 'AcrPull')
+  scope: containerRegistry
+  properties: {
+    principalId: acrPullIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+    )
+  }
+}
+
 resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2026-01-01' = {
   name: containerAppsEnvironmentName
   location: location
@@ -98,7 +119,10 @@ resource containerApp 'Microsoft.App/containerApps@2026-01-01' = {
   name: containerAppName
   location: location
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${acrPullIdentity.id}': {}
+    }
   }
   properties: {
     managedEnvironmentId: containerAppsEnvironment.id
@@ -113,7 +137,7 @@ resource containerApp 'Microsoft.App/containerApps@2026-01-01' = {
       registries: [
         {
           server: containerRegistry.properties.loginServer
-          identity: 'system'
+          identity: acrPullIdentity.id
         }
       ]
     }
@@ -144,19 +168,9 @@ resource containerApp 'Microsoft.App/containerApps@2026-01-01' = {
       }
     }
   }
-}
-
-resource acrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(containerRegistry.id, containerApp.id, 'AcrPull')
-  scope: containerRegistry
-  properties: {
-    principalId: containerApp.identity.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      '7f951dda-4ed3-4680-a7ca-43fe172d538d'
-    )
-  }
+  dependsOn: [
+    acrPullRoleAssignment
+  ]
 }
 
 @description('URL for the Container Apps backend.')
