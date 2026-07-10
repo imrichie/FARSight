@@ -2,8 +2,7 @@
 // Deployed through its own GitHub Actions workflow (frontend-deploy.yml)
 // using the Azure/static-web-apps-deploy action and a deployment token —
 // this resource is not linked to GitHub here, so no GitHub token is ever
-// needed in Bicep or Azure AD. See DECISIONS.md for why this replaced the
-// original Vercel plan.
+// needed in Bicep or Azure AD.
 
 @description('Name of the Azure Static Web App.')
 param staticWebAppName string = 'stapp-farsight'

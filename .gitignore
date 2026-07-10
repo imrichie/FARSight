@@ -24,10 +24,8 @@ env/
 # macOS
 .DS_Store
 
-# Source PDFs — large binary files, not tracked in git
-data/raw/*.pdf
-
-# Internal reference docs — not part of the deployable project
+# Internal reference docs — not part of the deployable project, includes
+# the source PDFs (large binary files, not tracked in git)
 data/
 !frontend/src/data/
 
