@@ -1,0 +1,121 @@
+name: Deploy Backend to Container Apps
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - 'infrastructure/hosting.bicep'
+      - '.github/workflows/backend-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: backend-deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RESOURCE_GROUP: rg-farsight-dev
+  REGISTRY_LOGIN_SERVER: acrfarsight2hdsc44etsuuc.azurecr.io
+  IMAGE_NAME: farsight-api
+
+jobs:
+  deploy:
+    name: Build, push, and deploy FastAPI backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        run: az acr login --name ${{ env.REGISTRY_LOGIN_SERVER }}
+
+      - name: Build and push backend image
+        run: |
+          docker build -t "${{ env.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" .
+          docker push "${{ env.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+
+      # az deployment group create's own exit code is not trustworthy for
+      # scale-to-zero Container Apps: a slow-but-fine cold start can outlast
+      # its synchronous wait and report "Operation expired" on a deployment
+      # that converges to Healthy moments later (see DECISIONS.md). So this
+      # step is allowed to fail without stopping the job — the next step is
+      # the real acceptance check, polling actual revision health instead of
+      # trusting this command's exit status.
+      - name: Deploy to Container Apps
+        id: deploy
+        continue-on-error: true
+        run: |
+          az deployment group create \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --template-file infrastructure/hosting.bicep \
+            --parameters \
+              containerImage="${{ env.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+              searchEndpoint="${{ secrets.AZURE_SEARCH_ENDPOINT }}" \
+              searchIndexName="${{ secrets.AZURE_SEARCH_INDEX_NAME }}" \
+              searchAdminKey="${{ secrets.AZURE_SEARCH_ADMIN_KEY }}" \
+              openAiEndpoint="${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
+              openAiApiKey="${{ secrets.AZURE_OPENAI_API_KEY }}" \
+              openAiChatDeployment="${{ secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}" \
+              openAiEmbeddingDeployment="${{ secrets.AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}"
+
+      # The real acceptance criteria: not "did the deploy command exit 0,"
+      # but "is the revision running this exact image actually healthy."
+      # Bounded to 10 minutes — generous enough to cover a slow cold start
+      # like the one observed manually, finite so a genuinely broken deploy
+      # still fails the job instead of hanging CI indefinitely.
+      - name: Confirm revision reached Healthy
+        run: |
+          IMAGE="${{ env.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          echo "Polling ca-farsight-api-dev for a revision running: $IMAGE"
+
+          for attempt in $(seq 1 20); do
+            STATUS=$(az containerapp revision list \
+              --name ca-farsight-api-dev \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --query "[?properties.template.containers[0].image=='${IMAGE}'] | [0].{name:name, health:properties.healthState, state:properties.provisioningState}" \
+              -o json)
+
+            NAME=$(echo "$STATUS" | jq -r '.name // empty')
+            HEALTH=$(echo "$STATUS" | jq -r '.health // empty')
+            STATE=$(echo "$STATUS" | jq -r '.state // empty')
+
+            echo "Attempt $attempt/20: revision=${NAME:-<not found yet>} health=${HEALTH:-?} state=${STATE:-?}"
+
+            if [ "$HEALTH" = "Healthy" ] && [ "$STATE" = "Provisioned" ]; then
+              echo "Revision $NAME is healthy and provisioned."
+              exit 0
+            fi
+
+            sleep 30
+          done
+
+          echo "::error::No revision running $IMAGE reached Healthy/Provisioned within 10 minutes."
+          exit 1
+
+      # Confirms the app itself is serving, not just that the platform's
+      # own probe is satisfied — fetched directly from the container app
+      # resource rather than the deployment's outputs, since a deployment
+      # that reported failure above may not reliably expose them.
+      - name: Smoke test deployed backend
+        run: |
+          BACKEND_URL=$(az containerapp show \
+            --name ca-farsight-api-dev \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+          echo "Backend URL: https://$BACKEND_URL"
+          curl --fail --silent --show-error --retry 5 --retry-delay 10 --retry-connrefused \
+            "https://$BACKEND_URL/openapi.json" > /dev/null
