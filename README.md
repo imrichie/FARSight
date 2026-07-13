@@ -134,4 +134,4 @@ suite against a committed baseline before it's allowed to land.
 
 The decisions above are the short version. The full case study — including
 the evaluation process, the failures that shaped it, and the tradeoffs
-behind them — is here: **[link to case study]**
+behind them — is here: [Case Study](https://imrichie.github.io/farsight-case-study/)
