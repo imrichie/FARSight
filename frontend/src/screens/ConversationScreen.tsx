@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { AnswerCard } from '../components/AnswerCard'
 import { ErrorState } from '../components/ErrorState'
+import { Footer } from '../components/Footer'
 import { LoadingDots } from '../components/LoadingDots'
 import { NavigationHeader } from '../components/NavigationHeader'
 import { QuestionDisplay } from '../components/QuestionDisplay'
@@ -67,6 +68,8 @@ export function ConversationScreen({
           />
         </div>
       </main>
+
+      <Footer />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { BookOpen } from 'lucide-react'
 import { BrandPill } from '../components/BrandPill'
 import { ExampleQuestionCard } from '../components/ExampleQuestionCard'
+import { Footer } from '../components/Footer'
 import { NavigationHeader } from '../components/NavigationHeader'
 import { QuestionInput } from '../components/QuestionInput'
 import { TrustIndicatorRow } from '../components/TrustIndicatorRow'
@@ -62,6 +63,8 @@ export function HomeScreen({ onAsk }: HomeScreenProps) {
           </div>
         </main>
       </div>
+
+      <Footer />
     </div>
   )
 }
